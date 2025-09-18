@@ -1,6 +1,8 @@
+import axios from "axios";
 import { useRouter } from "expo-router";
 import { useState } from "react";
 import { ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+
 
 export default function SignUp() {
   const router = useRouter();
@@ -12,10 +14,57 @@ export default function SignUp() {
 
   const update = (key: string, value: string) => setForm({ ...form, [key]: value });
 
-  const handleSignUp = () => {
-    alert("Form Submitted ✅");
-    router.replace("/auth/sign-in");
-  };
+
+const handleSignUp = async () => {
+  try {
+    const payload = {
+      name: form.name,
+      email: form.email,
+      mobile: form.mobile,
+      password: form.password,
+      farmerAddress: {
+        city: form.city,
+        state: form.state,
+        country: form.country,
+      },
+      farmDetails: {
+        farmSize: form.farmSize,
+        cropsGrown: form.cropsGrown ? form.cropsGrown.split(",") : [],
+        irrigationType: form.irrigationType,
+        soilType: form.soilType,
+      },
+    };
+
+    const response = await axios.post(
+      "https://mandiconnect.onrender.com/farmer/signup",
+      payload
+    );
+
+    // ✅ If status 201 (Created), registration is successful
+    if (response.status === 201) {
+      alert("✅ Farmer registered! Please check your email for verification link.");
+      router.replace("/auth/sign-in");
+    } else {
+      alert("❌ Registration failed. Please try again.");
+    }
+  } catch (error: unknown) {
+    if (axios.isAxiosError(error)) {
+      if (error.response?.status === 409) {
+        alert("⚠️ Email or Mobile already exists!");
+      } else {
+        const message = error.response?.data || "❌ Registration failed.";
+        alert(message);
+      }
+    } else {
+      alert("⚠️ Something went wrong. Please try again.");
+    }
+    console.error("SignUp error:", error);
+  }
+};
+
+
+
+
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
