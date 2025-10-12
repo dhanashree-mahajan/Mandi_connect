@@ -1,124 +1,316 @@
+import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { Picker } from "@react-native-picker/picker";
-import { BarChart2, Home, Leaf, PlusSquare, User } from "lucide-react-native";
-import { useState } from "react";
-import { Alert, ScrollView, Text, TextInput, TouchableOpacity, View } from "react-native";
+import axios from "axios";
+import { useRouter } from "expo-router";
+import { useEffect, useState } from "react";
+import {
+  ActivityIndicator,
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from "react-native";
 
-export default function AddCropScreen() {
-  const [cropName, setCropName] = useState("");
-  const [cropType, setCropType] = useState("");
-  const [cropVariety, setCropVariety] = useState("");
+const API_BASE = "https://mandiconnect.onrender.com";
+
+const showAlert = (title: string, message: string) => {
+  if (Platform.OS === "web") window.alert(`${title}\n${message}`);
+  else Alert.alert(title, message);
+};
+
+export default function AddPriceScreen() {
+  const router = useRouter();
+
   const [loading, setLoading] = useState(false);
+  const [crops, setCrops] = useState<string[]>([]);
+  const [markets, setMarkets] = useState<string[]>([]);
+  const [selectedCrop, setSelectedCrop] = useState("");
+  const [selectedMarket, setSelectedMarket] = useState("");
+  const [price, setPrice] = useState("");
+  const [unit, setUnit] = useState("kg");
 
-  const handleAddCrop = async () => {
-    if (!cropName || !cropType || !cropVariety) {
-      Alert.alert("⚠️ Validation Error", "Please fill all fields");
-      return;
-    }
+  const [errors, setErrors] = useState({
+    crop: false,
+    market: false,
+    price: false,
+  });
 
-    const payload = { name: cropName, type: cropType, variety: cropVariety };
-    setLoading(true);
+  // Fetch crop & market lists
+  useEffect(() => {
+    (async () => {
+      try {
+        const [cropRes, marketRes] = await Promise.all([
+          axios.get(`${API_BASE}/crops`),
+          axios.get(`${API_BASE}/markets`),
+        ]);
+        setCrops(cropRes.data || []);
+        setMarkets(marketRes.data || []);
+      } catch (error) {
+        console.error("Error fetching lists:", error);
+        showAlert("Error", "Failed to load crop or market lists.");
+      }
+    })();
+  }, []);
 
+  const validate = () => {
+    const newErrors = {
+      crop: !selectedCrop,
+      market: !selectedMarket,
+      price: !price,
+    };
+    setErrors(newErrors);
+    return !(newErrors.crop || newErrors.market || newErrors.price);
+  };
+
+  const handleSubmit = async () => {
+    if (!validate()) return;
     try {
-      const response = await fetch("https://mandiconnect.onrender.com/addCrop", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+      setLoading(true);
+      await axios.post(`${API_BASE}/prices/add`, {
+        crop: selectedCrop,
+        market: selectedMarket,
+        price: Number(price),
+        unit,
       });
 
-      const data = await response.json();
-
-      if (response.ok) {
-        Alert.alert("✅ Success", "Crop added successfully!");
-        setCropName(""); setCropType(""); setCropVariety("");
-      } else {
-        Alert.alert("❌ Error", data.message || "Something went wrong!");
-      }
+      showAlert("✅ Success", "Price added successfully!");
+      router.back();
     } catch (error) {
-      console.error(error);
-      Alert.alert("⚠️ Network Error", "Could not connect to server.");
+      console.error("Error submitting price:", error);
+      showAlert("⚠️ Error", "Unable to submit price at this time.");
     } finally {
       setLoading(false);
     }
   };
 
+  const addNewCrop = async () => {
+    const newCrop = prompt("Enter new crop name:");
+    if (newCrop) {
+      try {
+        await axios.post(`${API_BASE}/crops/add`, { name: newCrop });
+        setCrops((prev) => [...prev, newCrop]);
+        setSelectedCrop(newCrop);
+      } catch {
+        showAlert("Error", "Failed to add crop.");
+      }
+    }
+  };
+
+  const addNewMarket = async () => {
+    const newMarket = prompt("Enter new market name:");
+    if (newMarket) {
+      try {
+        await axios.post(`${API_BASE}/markets/add`, { name: newMarket });
+        setMarkets((prev) => [...prev, newMarket]);
+        setSelectedMarket(newMarket);
+      } catch {
+        showAlert("Error", "Failed to add market.");
+      }
+    }
+  };
+
   return (
-    <View className="flex-1 bg-gray-100">
-      <ScrollView contentContainerStyle={{ padding: 20 }}>
-        <View className="bg-white rounded-xl p-6 shadow-md">
-          {/* Header */}
-          <Text style={{ fontSize: 28, fontWeight: "700", color: "#2E7D32", marginBottom: 12, textAlign: "center" }}>
-            🌾 Add Crop
-          </Text>
-          <Text style={{ fontSize: 14, color: "#4B5563", textAlign: "center", marginBottom: 20 }}>
-            Add new crop details to make it available for buyers
-          </Text>
+    <SafeAreaView style={styles.container}>
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+      >
+        <ScrollView
+          contentContainerStyle={styles.scrollContent}
+          keyboardShouldPersistTaps="handled"
+        >
+          <View style={styles.card}>
+            <Text style={styles.headerTitle}>🌾 Mandi Connect</Text>
+            <Text style={styles.subTitle}>Add Crop Price</Text>
 
-          {/* Crop Name */}
-          <Text className="text-gray-600 mb-1">Crop Name</Text>
-          <TextInput
-            value={cropName}
-            onChangeText={setCropName}
-            placeholder="e.g., Wheat"
-            className="border border-gray-300 rounded-lg px-4 py-3 mb-4 bg-gray-50 text-gray-800"
-          />
+            {/* Crop Picker */}
+            <Text style={styles.label}>Select Crop</Text>
+            <View style={styles.inputContainer}>
+              <MaterialCommunityIcons
+                name="sprout-outline"
+                size={20}
+                color="#6b7280"
+              />
+              <Picker
+                style={styles.picker}
+                selectedValue={selectedCrop}
+                onValueChange={(itemValue) =>
+                  itemValue === "add_new"
+                    ? addNewCrop()
+                    : setSelectedCrop(itemValue)
+                }
+              >
+                <Picker.Item label="-- Select Crop --" value="" />
+                {crops.map((crop, i) => (
+                  <Picker.Item key={i} label={crop} value={crop} />
+                ))}
+                <Picker.Item label="+ Add New Crop" value="add_new" />
+              </Picker>
+            </View>
+            {errors.crop && <Text style={styles.errorText}>Crop is required</Text>}
 
-          {/* Crop Type */}
-          <Text className="text-gray-600 mb-1">Crop Type</Text>
-          <View className="border border-gray-300 rounded-lg mb-4 bg-gray-50">
-            <Picker selectedValue={cropType} onValueChange={(itemValue) => setCropType(itemValue)}>
-              <Picker.Item label="Select a crop type" value="" />
-              <Picker.Item label="Grain" value="grain" />
-              <Picker.Item label="Fruit" value="fruit" />
-              <Picker.Item label="Vegetable" value="vegetable" />
-              <Picker.Item label="Leafy Vegetable" value="leafy-vegetable" />
-            </Picker>
+            {/* Market Picker */}
+            <Text style={styles.label}>Select Market</Text>
+            <View style={styles.inputContainer}>
+              <MaterialCommunityIcons
+                name="store-outline"
+                size={20}
+                color="#6b7280"
+              />
+              <Picker
+                style={styles.picker}
+                selectedValue={selectedMarket}
+                onValueChange={(itemValue) =>
+                  itemValue === "add_new"
+                    ? addNewMarket()
+                    : setSelectedMarket(itemValue)
+                }
+              >
+                <Picker.Item label="-- Select Market --" value="" />
+                {markets.map((market, i) => (
+                  <Picker.Item key={i} label={market} value={market} />
+                ))}
+                <Picker.Item label="+ Add New Market" value="add_new" />
+              </Picker>
+            </View>
+            {errors.market && (
+              <Text style={styles.errorText}>Market is required</Text>
+            )}
+
+            {/* Price Input */}
+            <Text style={styles.label}>Enter Price</Text>
+            <View style={styles.inputContainer}>
+              <MaterialCommunityIcons
+                name="cash"
+                size={20}
+                color="#6b7280"
+              />
+              <TextInput
+                style={styles.input}
+                placeholder="Enter price"
+                keyboardType="numeric"
+                value={price}
+                onChangeText={setPrice}
+              />
+            </View>
+            {errors.price && (
+              <Text style={styles.errorText}>Price is required</Text>
+            )}
+
+            {/* Unit Picker */}
+            <Text style={styles.label}>Select Unit</Text>
+            <View style={styles.inputContainer}>
+              <MaterialCommunityIcons
+                name="weight-kilogram"
+                size={20}
+                color="#6b7280"
+              />
+              <Picker
+                style={styles.picker}
+                selectedValue={unit}
+                onValueChange={setUnit}
+              >
+                <Picker.Item label="Per kg" value="kg" />
+                <Picker.Item label="Per quintal" value="quintal" />
+                <Picker.Item label="Per ton" value="ton" />
+              </Picker>
+            </View>
+
+            {/* Submit Button */}
+            <TouchableOpacity
+              style={[styles.button, loading && { opacity: 0.7 }]}
+              onPress={handleSubmit}
+              disabled={loading}
+            >
+              {loading ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Text style={styles.buttonText}>Submit Price</Text>
+              )}
+            </TouchableOpacity>
           </View>
-
-          {/* Crop Variety */}
-          <Text className="text-gray-600 mb-1">Crop Variety</Text>
-          <TextInput
-            value={cropVariety}
-            onChangeText={setCropVariety}
-            placeholder="e.g., Red Carrot"
-            className="border border-gray-300 rounded-lg px-4 py-3 mb-6 bg-gray-50 text-gray-800"
-          />
-
-          {/* Add Crop Button */}
-          <TouchableOpacity
-            onPress={handleAddCrop}
-            disabled={loading}
-            className={`rounded-lg py-3 ${loading ? "bg-gray-400" : "bg-green-700"}`}
-          >
-            <Text className="text-white font-semibold text-center text-base">
-              {loading ? "Adding..." : "Add Crop"}
-            </Text>
-          </TouchableOpacity>
-        </View>
-      </ScrollView>
-
-      {/* Bottom Navigation */}
-      <View className="flex-row justify-between border-t border-gray-200 bg-white p-3">
-        <TouchableOpacity className="items-center flex-1">
-          <Home size={22} color="gray" />
-          <Text className="text-xs text-gray-600">Home</Text>
-        </TouchableOpacity>
-        <TouchableOpacity className="items-center flex-1">
-          <Leaf size={22} color="gray" />
-          <Text className="text-xs text-gray-600">My Crops</Text>
-        </TouchableOpacity>
-        <TouchableOpacity className="items-center flex-1">
-          <PlusSquare size={22} color="green" />
-          <Text className="text-xs text-green-600 font-semibold">Add Crop</Text>
-        </TouchableOpacity>
-        <TouchableOpacity className="items-center flex-1">
-          <BarChart2 size={22} color="gray" />
-          <Text className="text-xs text-gray-600">Analytics</Text>
-        </TouchableOpacity>
-        <TouchableOpacity className="items-center flex-1">
-          <User size={22} color="gray" />
-          <Text className="text-xs text-gray-600">Profile</Text>
-        </TouchableOpacity>
-      </View>
-    </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }
+
+// --- Styles ---
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: "#f3f4f6" },
+  scrollContent: {
+    flexGrow: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 20,
+  },
+  card: {
+    width: "90%",
+    maxWidth: 420,
+    backgroundColor: "#fff",
+    borderRadius: 16,
+    padding: 20,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 6,
+    elevation: 5,
+  },
+  headerTitle: {
+    fontSize: 26,
+    fontWeight: "bold",
+    color: "#2E7D32",
+    textAlign: "center",
+    marginBottom: 8,
+  },
+  subTitle: {
+    fontSize: 18,
+    fontWeight: "600",
+    color: "#1f2937",
+    textAlign: "center",
+    marginBottom: 16,
+  },
+  label: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#374151",
+    marginBottom: 4,
+    marginTop: 8,
+  },
+  inputContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#f9fafb",
+    borderWidth: 1,
+    borderColor: "#d1d5db",
+    borderRadius: 10,
+    paddingHorizontal: 10,
+  },
+  picker: { flex: 1 },
+  input: {
+    flex: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 8,
+    fontSize: 16,
+    color: "#1f2937",
+  },
+  button: {
+    backgroundColor: "#2E7D32",
+    paddingVertical: 14,
+    borderRadius: 10,
+    alignItems: "center",
+    marginTop: 18,
+  },
+  buttonText: { color: "#fff", fontWeight: "600", fontSize: 16 },
+  errorText: {
+    color: "red",
+    fontSize: 12,
+    marginTop: 4,
+  },
+});

@@ -49,7 +49,7 @@ export default function BuyerLogin() {
       );
 
       showAlert("✅ Success", res.data.message || "Login successful!");
-      router.replace("/buyer/buyerdashboard"); // redirect to dashboard after login
+      router.replace("/auth/buyer/buyerdashboard"); // redirect to dashboard after login
     } catch (error: any) {
       if (error.response?.status === 401) {
         showAlert("⚠️ Invalid Credentials", "Incorrect email or password.");

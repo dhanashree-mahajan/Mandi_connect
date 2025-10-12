@@ -53,7 +53,7 @@ export default function FarmerLogin() {
         await AsyncStorage.setItem("token", response.data.token);
         await AsyncStorage.setItem("userId", response.data["User ID"] || "");
         showAlert("✅ Success", response.data.message);
-        router.replace("/farmer/farmerdashboard");
+        router.replace("/auth/farmer/farmer-dashboard");
       } else {
         showAlert("❌ Login failed", "Please try again.");
       }

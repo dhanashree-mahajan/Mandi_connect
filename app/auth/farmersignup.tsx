@@ -56,27 +56,37 @@ export default function FarmerSignUp() {
     soilType: "",
   });
 
-  const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [loading, setLoading] = useState(false);
 
   const update = (key: keyof FarmerForm, value: string) =>
     setForm({ ...form, [key]: value });
 
   const handleSignUp = async () => {
+    const trimmedForm = Object.fromEntries(
+      Object.entries(form).map(([k, v]) => [k, v.trim()])
+    ) as FarmerForm;
+
     // Required validation
-    if (!form.name || !form.email || !form.mobile || !form.password || !form.city || !form.state || !form.country) {
+    if (
+      !trimmedForm.name ||
+      !trimmedForm.email ||
+      !trimmedForm.mobile ||
+      !trimmedForm.password ||
+      !trimmedForm.city ||
+      !trimmedForm.state ||
+      !trimmedForm.country
+    ) {
       showAlert("⚠️ Missing fields", "Please fill all required fields.");
       return;
     }
 
-    // Email validation
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) {
+    // Email & Mobile validation
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedForm.email)) {
       showAlert("⚠️ Invalid email", "Please enter a valid email address.");
       return;
     }
-
-    // Mobile validation
-    if (!/^\d{10}$/.test(form.mobile)) {
+    if (!/^\d{10}$/.test(trimmedForm.mobile)) {
       showAlert("⚠️ Invalid mobile", "Please enter a valid 10-digit mobile number.");
       return;
     }
@@ -85,20 +95,22 @@ export default function FarmerSignUp() {
 
     try {
       const payload = {
-        name: form.name,
-        email: form.email.toLowerCase(),
-        mobile: form.mobile,
-        password: form.password,
+        name: trimmedForm.name,
+        email: trimmedForm.email,
+        mobile: trimmedForm.mobile,
+        password: trimmedForm.password,
         farmerAddress: {
-          city: form.city,
-          state: form.state,
-          country: form.country,
+          city: trimmedForm.city,
+          state: trimmedForm.state,
+          country: trimmedForm.country,
         },
         farmDetails: {
-          farmSize: form.farmSize,
-          cropsGrown: form.cropsGrown ? form.cropsGrown.split(",").map(c => c.trim()) : [],
-          irrigationType: form.irrigationType,
-          soilType: form.soilType,
+          farmSize: trimmedForm.farmSize,
+          cropsGrown: trimmedForm.cropsGrown
+            ? trimmedForm.cropsGrown.split(",").map(c => c.trim())
+            : [],
+          irrigationType: trimmedForm.irrigationType,
+          soilType: trimmedForm.soilType,
         },
       };
 
@@ -106,19 +118,38 @@ export default function FarmerSignUp() {
         "https://mandiconnect.onrender.com/farmer/signup",
         payload,
         { headers: { "Content-Type": "application/json" } }
+
       );
+
+      console.log("✅ Backend response:", res);
 
       if (res.status === 201) {
         showAlert("✅ Success", "Farmer registered! Check email for verification.");
         router.replace("/auth/farmerlogin");
       } else {
-        showAlert("❌ Registration failed", "Please try again.");
+        console.warn("⚠️ Registration status not 201:", res.status, res.data);
+        showAlert("❌ Registration failed", res.data || "Please try again.");
       }
     } catch (e: any) {
-      if (e.response?.status === 409) {
-        showAlert("⚠️ Already exists", "User with this email or mobile already exists.");
+      console.error("🔥 Signup error full:", e);
+
+      if (e.response) {
+        console.error("💥 Backend error status:", e.response.status);
+        console.error("💥 Backend error data:", e.response.data);
+        if (e.response.status === 409) {
+          showAlert("⚠️ Already exists", "User with this email or mobile already exists.");
+        } else {
+          showAlert("⚠️ Backend Error", e.response.data || "Something went wrong on server.");
+        }
+      } else if (e.request) {
+        console.error("⚠️ No response from backend:", e.request);
+        showAlert(
+          "⚠️ Network Error",
+          "Cannot reach backend. Check your connection or CORS settings."
+        );
       } else {
-        showAlert("⚠️ Error", e.response?.data?.message || "Something went wrong.");
+        console.error("❗ Unexpected error:", e.message);
+        showAlert("⚠️ Error", e.message || "Unexpected error occurred.");
       }
     } finally {
       setLoading(false);
@@ -151,22 +182,7 @@ export default function FarmerSignUp() {
   const labelStyle: TextStyle = { fontSize: 14, fontWeight: "600", color: "#374151", marginBottom: 4 };
   const titleStyle: TextStyle = { fontSize: 28, fontWeight: "bold", color: "#2E7D32", textAlign: "center", marginBottom: 8 };
   const subtitleStyle: TextStyle = { fontSize: 20, fontWeight: "600", color: "#1f2937", textAlign: "center", marginBottom: 4 };
-  const infoTextStyle: TextStyle = { fontSize: 14, color: "#4b5563", textAlign: "center", marginBottom: 16 };
   const buttonStyle: ViewStyle = { backgroundColor: "#2E7D32", paddingVertical: 14, borderRadius: 10, alignItems: "center", marginTop: 4 };
-
-  const inputs: { key: keyof FarmerForm; placeholder: string; secure?: boolean; keyboardType?: any; label: string }[] = [
-    { key: "name", placeholder: "Enter full name", label: "Full Name" },
-    { key: "email", placeholder: "Enter email", keyboardType: "email-address", label: "Email" },
-    { key: "mobile", placeholder: "Enter mobile number", keyboardType: "phone-pad", label: "Mobile Number" },
-    { key: "password", placeholder: "Enter password", secure: true, label: "Password" },
-    { key: "city", placeholder: "Enter city", label: "City" },
-    { key: "state", placeholder: "Enter state", label: "State" },
-    { key: "country", placeholder: "Enter country", label: "Country" },
-    { key: "farmSize", placeholder: "Enter farm size in acres", keyboardType: "numeric", label: "Farm Size" },
-    { key: "cropsGrown", placeholder: "Enter crops separated by comma", label: "Crops Grown" },
-    { key: "irrigationType", placeholder: "Enter irrigation type", label: "Irrigation Type" },
-    { key: "soilType", placeholder: "Enter soil type", label: "Soil Type" },
-  ];
 
   return (
     <SafeAreaView style={containerStyle}>
@@ -175,40 +191,93 @@ export default function FarmerSignUp() {
           <View style={cardStyle}>
             <Text style={titleStyle}>🌾 Mandi Connect</Text>
             <Text style={subtitleStyle}>Farmer SignUp</Text>
-            <Text style={infoTextStyle}>Sign up to access and stay connected with the mandi network.</Text>
 
-            {inputs.map(item => (
-              <View key={item.key} style={{ marginBottom: 12, width: "100%" }}>
-                <Text style={labelStyle}>{item.label}</Text>
+            {/* Name */}
+            <View style={{ marginBottom: 12, width: "100%" }}>
+              <Text style={labelStyle}>Full Name</Text>
+              <View style={inputContainerStyle}>
+                <MaterialCommunityIcons name="account-outline" size={20} color="#6b7280" />
+                <TextInput
+                  style={{ flex: 1, paddingVertical: 12, paddingHorizontal: 8, color: "#1f2937", fontSize: 16 }}
+                  placeholder="Enter full name"
+                  value={form.name}
+                  onChangeText={(text) => update("name", text)}
+                />
+              </View>
+            </View>
+
+            {/* Email */}
+            <View style={{ marginBottom: 12, width: "100%" }}>
+              <Text style={labelStyle}>Email</Text>
+              <View style={inputContainerStyle}>
+                <MaterialCommunityIcons name="email-outline" size={20} color="#6b7280" />
+                <TextInput
+                  style={{ flex: 1, paddingVertical: 12, paddingHorizontal: 8, fontSize: 16, color: "#1f2937" }}
+                  placeholder="Enter email"
+                  keyboardType="email-address"
+                  value={form.email}
+                  onChangeText={(text) => update("email", text)}
+                  autoCapitalize="none"
+                />
+              </View>
+            </View>
+
+            {/* Mobile */}
+            <View style={{ marginBottom: 12, width: "100%" }}>
+              <Text style={labelStyle}>Mobile Number</Text>
+              <View style={inputContainerStyle}>
+                <MaterialCommunityIcons name="phone-outline" size={20} color="#6b7280" />
+                <TextInput
+                  style={{ flex: 1, paddingVertical: 12, paddingHorizontal: 8, fontSize: 16, color: "#1f2937" }}
+                  placeholder="Enter mobile number"
+                  keyboardType="phone-pad"
+                  value={form.mobile}
+                  onChangeText={(text) => update("mobile", text)}
+                />
+              </View>
+            </View>
+
+            {/* Password */}
+            <View style={{ marginBottom: 12, width: "100%" }}>
+              <Text style={labelStyle}>Password</Text>
+              <View style={inputContainerStyle}>
+                <MaterialCommunityIcons name={showPassword ? "lock-open-outline" : "lock-outline"} size={20} color="#6b7280" />
+                <TextInput
+                  style={{ flex: 1, paddingVertical: 12, paddingHorizontal: 8, fontSize: 16, color: "#1f2937" }}
+                  placeholder="Enter password"
+                  secureTextEntry={!showPassword}
+                  value={form.password}
+                  onChangeText={(text) => update("password", text)}
+                  autoCapitalize="none"
+                />
+                <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
+                  <MaterialCommunityIcons name={showPassword ? "eye-outline" : "eye-off-outline"} size={20} color="#6b7280" />
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            {/* Other fields */}
+            {["city", "state", "country", "farmSize", "cropsGrown", "irrigationType", "soilType"].map((key) => (
+              <View key={key} style={{ marginBottom: 12, width: "100%" }}>
+                <Text style={labelStyle}>{key.charAt(0).toUpperCase() + key.slice(1)}</Text>
                 <View style={inputContainerStyle}>
-                  <MaterialCommunityIcons
-                    name={item.key === "password" ? (showPassword ? "lock-open-outline" : "lock-outline") : "account-outline"}
-                    size={20}
-                    color="#6b7280"
-                  />
+                  <MaterialCommunityIcons name="pencil-outline" size={20} color="#6b7280" />
                   <TextInput
-                    style={{ flex: 1, paddingVertical: 12, paddingHorizontal: 8, color: "#1f2937", fontSize: 16 }}
-                    placeholder={item.placeholder}
-                    placeholderTextColor="#6b7280"
-                    secureTextEntry={item.secure && !showPassword}
-                    keyboardType={item.keyboardType}
-                    value={form[item.key]}
-                    onChangeText={text => update(item.key, text)}
-                    autoCapitalize={item.key === "email" || item.key === "password" ? "none" : "sentences"}
+                    style={{ flex: 1, paddingVertical: 12, paddingHorizontal: 8, fontSize: 16, color: "#1f2937" }}
+                    placeholder={`Enter ${key}`}
+                    value={form[key as keyof FarmerForm]}
+                    onChangeText={(text) => update(key as keyof FarmerForm, text)}
                   />
-                  {item.key === "password" && (
-                    <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
-                      <MaterialCommunityIcons name={showPassword ? "eye-outline" : "eye-off-outline"} size={20} color="#6b7280" />
-                    </TouchableOpacity>
-                  )}
                 </View>
               </View>
             ))}
 
+            {/* Sign Up Button */}
             <TouchableOpacity onPress={handleSignUp} disabled={loading} style={buttonStyle}>
               {loading ? <ActivityIndicator color="#fff" /> : <Text style={{ color: "#fff", fontWeight: "600", fontSize: 16 }}>Sign Up</Text>}
             </TouchableOpacity>
 
+            {/* Login Navigation */}
             <View style={{ flexDirection: "row", justifyContent: "center", marginTop: 12 }}>
               <Text style={{ color: "#4b5563" }}>Already have an account? </Text>
               <TouchableOpacity onPress={() => router.push("/auth/farmerlogin")}>
