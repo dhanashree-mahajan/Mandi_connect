@@ -1,12 +1,12 @@
 import { SafeAreaView, Text } from "react-native";
 
-export default function Marketplace() {
+export default function Notifications() {
   return (
     <SafeAreaView style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
       <Text style={{ fontSize: 22, fontWeight: "bold", color: "#2E7D32" }}>
-        🛒 Marketplace
+        🔔 Notifications
       </Text>
-      <Text>Browse crops available for trade here</Text>
+      <Text>No new notifications yet</Text>
     </SafeAreaView>
   );
 }

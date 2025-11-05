@@ -1,107 +1,209 @@
 import { MaterialCommunityIcons } from "@expo/vector-icons";
-import { router } from "expo-router";
-import { useState } from "react";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useRouter } from "expo-router";
+import { useEffect, useState } from "react";
 import {
-  FlatList,
-  SafeAreaView,
+  ActivityIndicator,
+  Alert,
+  Platform,
+  RefreshControl,
+  ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
+  useWindowDimensions,
 } from "react-native";
 
-const dummyPrices = [
-  {
-    id: "1",
-    crop: "Wheat",
-    market: "Lahore Market",
-    price: "₹1,500 /quintal",
-    change: "Up 2.5%",
-    status: "up",
-    time: "2 hours ago",
-  },
-  {
-    id: "2",
-    crop: "Rice (Basmati)",
-    market: "Karachi Wholesale",
-    price: "₹2,200 /quintal",
-    change: "Down 1%",
-    status: "down",
-    time: "5 hours ago",
-  },
-  {
-    id: "3",
-    crop: "Corn",
-    market: "Faisalabad Mandi",
-    price: "₹1,250 /quintal",
-    change: "Stable",
-    status: "stable",
-    time: "1 hour ago",
-  },
-];
-
 export default function FarmerDashboard() {
+  const router = useRouter();
+  const { height } = useWindowDimensions();
   const [activeTab, setActiveTab] = useState<"market" | "community">("market");
+  const [marketData, setMarketData] = useState<any[]>([]);
+  const [loading, setLoading] = useState<boolean>(false);
+  const [refreshing, setRefreshing] = useState(false);
 
-  const renderItem = ({ item }: any) => (
-    <View style={styles.card}>
-      <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-        <View>
-          <Text style={styles.crop}>{item.crop}</Text>
-          <Text style={styles.market}>{item.market}</Text>
-        </View>
-        <View style={{ alignItems: "flex-end" }}>
-          <Text style={styles.price}>{item.price}</Text>
-          <View
-            style={[
-              styles.badge,
-              item.status === "up"
-                ? { backgroundColor: "#D1FAE5" }
-                : item.status === "down"
-                ? { backgroundColor: "#FEE2E2" }
-                : { backgroundColor: "#FEF9C3" },
-            ]}
-          >
-            <Text
-              style={[
-                styles.badgeText,
-                item.status === "up"
-                  ? { color: "#15803D" }
-                  : item.status === "down"
-                  ? { color: "#B91C1C" }
-                  : { color: "#92400E" },
-              ]}
-            >
-              {item.change}
-            </Text>
-          </View>
-        </View>
-      </View>
-      <Text style={styles.time}>{item.time}</Text>
-    </View>
-  );
+  // When user taps "Community" on an entry, we keep track so that the
+  // UI can show the community results but still use same layout.
+  const [isCommunityView, setIsCommunityView] = useState(false);
+  const [communityFor, setCommunityFor] = useState<{ cropId: string; marketId: string } | null>(null);
+
+  const BASE_URL = "https://mandiconnect.onrender.com";
+
+  // fetch either all entries, or user's entries (by farmer id).
+  const fetchMarketData = async () => {
+    setLoading(true);
+    try {
+      const token = await AsyncStorage.getItem("token");
+      const farmerId = await AsyncStorage.getItem("userId");
+
+      if (!token) {
+        console.warn("⚠️ No token found in AsyncStorage");
+        setLoading(false);
+        return;
+      }
+
+      if (!farmerId) {
+        console.warn("⚠️ No userId found in AsyncStorage");
+        setLoading(false);
+        return;
+      }
+
+      let endpoint = "";
+      let headers: Record<string, string> = {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      };
+
+      // Market tab shows all entries
+      if (activeTab === "market") {
+        endpoint = `${BASE_URL}/farmer-entries/getAllEntries`;
+        setIsCommunityView(false);
+        setCommunityFor(null);
+      } else {
+        // Community tab (as per your design) — show that farmer's own entries
+        endpoint = `${BASE_URL}/farmer-entries/getByFarmerId/${farmerId}`;
+        setIsCommunityView(false);
+        setCommunityFor(null);
+      }
+
+      const response = await fetch(endpoint, { headers });
+      if (!response.ok) {
+        console.error(`❌ API Error: ${response.status}`);
+        setMarketData([]);
+        setLoading(false);
+        return;
+      }
+
+      const data = await response.json();
+
+      // Keep ids so we can fetch community by crop+market later
+      const formatted = (data || []).map((item: any) => ({
+        raw: item,
+        id: item._id || item.id,
+        cropId: item.crop?.id || item.crop?._id || item.crop,
+        marketId: item.market?.id || item.market?._id || item.market,
+        cropName: item.crop?.name || item.cropName || "Unknown Crop",
+        market: item.market?.marketName || item.market?.name || "N/A",
+        price: item.price || 0,
+        quantity: item.quantity || "",
+        status: item.status || "active",
+        time: item.createdAt ? new Date(item.createdAt).toLocaleString() : "N/A",
+      }));
+
+      setMarketData(formatted);
+    } catch (error) {
+      console.error("❌ Fetch error:", error);
+      setMarketData([]);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchMarketData();
+  }, [activeTab]);
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    // If currently viewing community results for a crop/market, refresh that
+    if (isCommunityView && communityFor) {
+      await fetchCommunity(communityFor.cropId, communityFor.marketId);
+    } else {
+      await fetchMarketData();
+    }
+  };
+
+  // Fetch community prices for specific crop + market and display them in same UI
+  const fetchCommunity = async (cropId: string, marketId: string) => {
+    setLoading(true);
+    try {
+      const token = await AsyncStorage.getItem("token");
+      if (!token) {
+        Alert.alert("Auth error", "Missing token. Please login again.");
+        setLoading(false);
+        return;
+      }
+
+      const endpoint = `${BASE_URL}/farmer-entries/getByCropAndMarket/${cropId}/${marketId}`;
+      const headers = {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      };
+
+      const response = await fetch(endpoint, { headers });
+      if (!response.ok) {
+        console.error("❌ Community fetch failed:", response.status);
+        setMarketData([]);
+        setIsCommunityView(false);
+        setCommunityFor(null);
+        return;
+      }
+
+      const data = await response.json();
+      const formatted = (data || []).map((item: any) => ({
+        raw: item,
+        id: item._id || item.id,
+        cropId: item.crop?.id || item.crop?._id || item.crop,
+        marketId: item.market?.id || item.market?._id || item.market,
+        cropName: item.crop?.name || item.cropName || "Unknown Crop",
+        market: item.market?.marketName || item.market?.name || "N/A",
+        price: item.price || 0,
+        quantity: item.quantity || "",
+        status: item.status || "active",
+        time: item.createdAt ? new Date(item.createdAt).toLocaleString() : "N/A",
+      }));
+
+      setMarketData(formatted);
+      setIsCommunityView(true);
+      setCommunityFor({ cropId, marketId });
+    } catch (err) {
+      console.error("❌ Error fetching community:", err);
+      Alert.alert("Error", "Failed to fetch community prices.");
+      setMarketData([]);
+      setIsCommunityView(false);
+      setCommunityFor(null);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+
+  const handleViewCommunityFor = (item: any) => {
+    const { cropId, marketId } = item;
+    if (!cropId || !marketId) {
+      Alert.alert("Missing IDs", "This entry is missing crop or market id.");
+      return;
+    }
+    fetchCommunity(cropId, marketId);
+  };
+
+  const scrollHeight = Platform.OS === "web" ? height - 200 : undefined;
 
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Farmer Dashboard</Text>
-        <MaterialCommunityIcons name="bell-outline" size={22} color="#374151" />
+        <MaterialCommunityIcons name="leaf" size={26} color="#2E7D32" />
+        <Text style={styles.headerTitle}>Farmer’s Hub</Text>
       </View>
 
       {/* Tabs */}
-      <View style={styles.tabRow}>
+      <View style={styles.toggleContainer}>
         <TouchableOpacity
-          onPress={() => setActiveTab("market")}
           style={[
-            styles.tabButton,
-            activeTab === "market" && styles.activeTabButton,
+            styles.toggleButton,
+            activeTab === "market" && styles.toggleActive,
           ]}
+          onPress={() => {
+            setActiveTab("market");
+          }}
         >
           <Text
             style={[
-              styles.tabText,
-              activeTab === "market" && styles.activeTabText,
+              styles.toggleText,
+              activeTab === "market" && styles.toggleTextActive,
             ]}
           >
             All Market Prices
@@ -109,16 +211,18 @@ export default function FarmerDashboard() {
         </TouchableOpacity>
 
         <TouchableOpacity
-          onPress={() => setActiveTab("community")}
           style={[
-            styles.tabButton,
-            activeTab === "community" && styles.activeTabButton,
+            styles.toggleButton,
+            activeTab === "community" && styles.toggleActive,
           ]}
+          onPress={() => {
+            setActiveTab("community");
+          }}
         >
           <Text
             style={[
-              styles.tabText,
-              activeTab === "community" && styles.activeTabText,
+              styles.toggleText,
+              activeTab === "community" && styles.toggleTextActive,
             ]}
           >
             Community Prices
@@ -126,101 +230,144 @@ export default function FarmerDashboard() {
         </TouchableOpacity>
       </View>
 
-      {/* Sort info */}
-      <View style={styles.sortRow}>
-        <MaterialCommunityIcons name="filter-variant" size={18} color="#4B5563" />
-        <Text style={styles.sortText}> Sort by: Market, Crop</Text>
-      </View>
+      {/* Data List */}
+      <ScrollView
+        style={[styles.scrollContainer, { height: scrollHeight }]}
+        contentContainerStyle={{ paddingBottom: 100 }}
+        showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+      >
+        {loading ? (
+          <ActivityIndicator size="large" color="#2E7D32" style={{ marginTop: 50 }} />
+        ) : marketData.length === 0 ? (
+          <Text style={styles.emptyText}>
+            {activeTab === "market"
+              ? "No market data available."
+              : isCommunityView
+              ? "No community entries found for this crop/market."
+              : "You haven’t added any entries yet."}
+          </Text>
+        ) : (
+          marketData.map((item, index) => (
+            <View key={item.id || index} style={styles.card}>
+              <View style={styles.cardHeader}>
+                <Text style={styles.category}>{item.status}</Text>
+                <Text style={styles.price}>₹{item.price}</Text>
+              </View>
 
-      {/* Price List */}
-      <FlatList
-        data={dummyPrices}
-        renderItem={renderItem}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={{ paddingBottom: 120 }}
-      />
+              <Text style={styles.cropName}>{item.cropName}</Text>
+              <Text style={styles.variety}>{item.quantity}</Text>
+
+              <View style={styles.footer}>
+                <View style={styles.footerRow}>
+                  <MaterialCommunityIcons name="map-marker" size={14} color="#757575" />
+                  <Text style={styles.footerText}>{item.market}</Text>
+                </View>
+
+                <View style={styles.footerRow}>
+                  <MaterialCommunityIcons name="clock-outline" size={14} color="#757575" />
+                  <Text style={styles.footerText}>{item.time}</Text>
+                </View>
+              </View>
+
+              {/* Small actions row — same visual style, minimal change */}
+              <View style={{ flexDirection: "row", justifyContent: "flex-end", marginTop: 8 }}>
+                <TouchableOpacity
+                  onPress={() => handleViewCommunityFor(item)}
+                  style={{
+                    paddingHorizontal: 10,
+                    paddingVertical: 6,
+                    borderRadius: 8,
+                    borderWidth: 1,
+                    borderColor: "#D1D5DB",
+                    backgroundColor: "#fff",
+                  }}
+                >
+                  <Text style={{ color: "#374151", fontSize: 13 }}>View Community</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          ))
+        )}
+      </ScrollView>
 
       {/* Floating Add Button */}
-      <TouchableOpacity
-        style={styles.fab}
-        onPress={() => router.push("/(farmer)/ad-dmarket")}
-      >
+      <TouchableOpacity style={styles.fab} onPress={() => router.push("/auth/farmer/add-crop")}>
         <MaterialCommunityIcons name="plus" size={28} color="#fff" />
       </TouchableOpacity>
-    </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#F9FAFB" },
-  header: {
-    padding: 16,
+  container: { flex: 1, backgroundColor: "#F9FAFB", padding: 16 },
+  header: { flexDirection: "row", alignItems: "center", gap: 6 },
+  headerTitle: { fontSize: 18, fontWeight: "700", color: "#2E7D32" },
+  toggleContainer: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginTop: 16,
+  },
+  toggleButton: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: "#D1D5DB",
+    borderRadius: 8,
+    paddingVertical: 8,
+    marginHorizontal: 4,
+    alignItems: "center",
+  },
+  toggleActive: {
+    backgroundColor: "#2E7D32",
+    borderColor: "#2E7D32",
+  },
+  toggleText: { fontSize: 13, fontWeight: "500", color: "#374151" },
+  toggleTextActive: { color: "#fff" },
+  scrollContainer: { flex: 1, marginTop: 12 },
+  card: {
+    backgroundColor: "#fff",
+    padding: 12,
+    borderRadius: 10,
+    marginBottom: 12,
+    shadowColor: "#000",
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  cardHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    backgroundColor: "#fff",
-    borderBottomColor: "#E5E7EB",
-    borderBottomWidth: 1,
   },
-  headerTitle: { fontSize: 20, fontWeight: "700", color: "#1F2937" },
-  tabRow: {
-    flexDirection: "row",
-    justifyContent: "center",
-    marginTop: 10,
-    backgroundColor: "#fff",
-    paddingVertical: 8,
-  },
-  tabButton: {
-    paddingVertical: 6,
-    paddingHorizontal: 14,
-    borderRadius: 6,
-    marginHorizontal: 5,
-    borderWidth: 1,
-    borderColor: "#2E7D32",
-  },
-  activeTabButton: { backgroundColor: "#2E7D32" },
-  tabText: { color: "#2E7D32", fontWeight: "600" },
-  activeTabText: { color: "#fff" },
-  sortRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: "#E5E7EB",
-    backgroundColor: "#fff",
-  },
-  sortText: { color: "#4B5563", fontSize: 13, marginLeft: 6 },
-  card: {
-    backgroundColor: "#fff",
-    marginHorizontal: 16,
-    marginVertical: 8,
-    padding: 16,
-    borderRadius: 12,
-    shadowColor: "#000",
-    shadowOpacity: 0.05,
-    shadowRadius: 3,
-    elevation: 2,
-  },
-  crop: { fontSize: 16, fontWeight: "bold", color: "#1F2937" },
-  market: { color: "#6B7280", fontSize: 13, marginTop: 2 },
-  price: { fontSize: 16, fontWeight: "600", color: "#2E7D32" },
-  badge: {
-    marginTop: 4,
-    borderRadius: 10,
-    paddingHorizontal: 8,
+  category: {
+    backgroundColor: "#E5E7EB",
+    color: "#374151",
+    fontSize: 12,
+    paddingHorizontal: 6,
     paddingVertical: 2,
-    alignSelf: "flex-start",
+    borderRadius: 6,
   },
-  badgeText: { fontSize: 12, fontWeight: "500" },
-  time: { marginTop: 6, color: "#9CA3AF", fontSize: 12 },
+  price: { fontWeight: "700", fontSize: 16, color: "#2E7D32" },
+  cropName: { fontSize: 15, fontWeight: "600", marginTop: 4, color: "#111827" },
+  variety: { fontSize: 13, color: "#6B7280" },
+  footer: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginTop: 10,
+  },
+  footerRow: { flexDirection: "row", alignItems: "center", gap: 4 },
+  footerText: { fontSize: 12, color: "#6B7280" },
   fab: {
     position: "absolute",
-    bottom: 80,
-    right: 20,
+    bottom: 24,
+    right: 24,
     backgroundColor: "#2E7D32",
-    borderRadius: 30,
-    padding: 16,
-    elevation: 5,
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    justifyContent: "center",
+    alignItems: "center",
+    elevation: 6,
   },
+  emptyText: { textAlign: "center", marginTop: 50, color: "#6B7280" },
 });

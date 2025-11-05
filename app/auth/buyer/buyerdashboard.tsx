@@ -10,6 +10,7 @@ import {
   View,
 } from "react-native";
 
+// 🌾 Dummy Buyer Demand Data
 const dummyDemands = [
   {
     id: "1",
@@ -17,7 +18,7 @@ const dummyDemands = [
     quantity: "500 kg",
     price: "₹1,400 /quintal",
     status: "active",
-    market: "Lahore Mandi",
+    market: "Pune Mandi",
     time: "2 hours ago",
   },
   {
@@ -26,7 +27,7 @@ const dummyDemands = [
     quantity: "300 kg",
     price: "₹2,000 /quintal",
     status: "fulfilled",
-    market: "Karachi Wholesale",
+    market: "Nagpur Mandi",
     time: "1 day ago",
   },
   {
@@ -35,7 +36,7 @@ const dummyDemands = [
     quantity: "1000 kg",
     price: "₹1,100 /quintal",
     status: "cancelled",
-    market: "Faisalabad Mandi",
+    market: "Nashik Mandi",
     time: "3 days ago",
   },
 ];
@@ -43,8 +44,9 @@ const dummyDemands = [
 export default function BuyerDashboard() {
   const [activeTab, setActiveTab] = useState<"active" | "fulfilled" | "cancelled">("active");
 
-  const filteredDemands = dummyDemands.filter((item) =>
-    activeTab === "active" ? item.status === "active" : item.status === activeTab
+  // Filter data based on selected tab
+  const filteredDemands = dummyDemands.filter(
+    (item) => item.status === activeTab
   );
 
   const renderItem = ({ item }: any) => (
@@ -65,13 +67,13 @@ export default function BuyerDashboard() {
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* Header */}
+      {/* 🔹 Header */}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Buyer Dashboard</Text>
         <MaterialCommunityIcons name="bell-outline" size={22} color="#374151" />
       </View>
 
-      {/* Tabs */}
+      {/* 🔹 Tabs */}
       <View style={styles.tabRow}>
         {["active", "fulfilled", "cancelled"].map((tab) => (
           <TouchableOpacity
@@ -94,18 +96,21 @@ export default function BuyerDashboard() {
         ))}
       </View>
 
-      {/* List */}
+      {/* 🔹 Data List */}
       <FlatList
         data={filteredDemands}
         renderItem={renderItem}
         keyExtractor={(item) => item.id}
         contentContainerStyle={{ paddingBottom: 120 }}
+        ListEmptyComponent={
+          <Text style={styles.emptyText}>No demands found in this category.</Text>
+        }
       />
 
-      {/* Add Button */}
+      {/* 🔹 Floating Add Button */}
       <TouchableOpacity
         style={styles.fab}
-        onPress={() => router.push("/(buyer)/add-demand")}
+        onPress={() => router.push("auth/buyer/add-demad")}
       >
         <MaterialCommunityIcons name="plus" size={28} color="#fff" />
       </TouchableOpacity>
@@ -167,5 +172,11 @@ const styles = StyleSheet.create({
     borderRadius: 30,
     padding: 16,
     elevation: 5,
+  },
+  emptyText: {
+    textAlign: "center",
+    color: "#6B7280",
+    marginTop: 30,
+    fontSize: 14,
   },
 });

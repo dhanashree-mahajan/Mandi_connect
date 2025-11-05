@@ -26,20 +26,13 @@ export default function BuyerLayout() {
         tabBarLabelStyle: { fontSize: 12, fontWeight: "600", marginBottom: 6 },
       }}
     >
-      {/* 🏠 Buyer Dashboard (Home) */}
+
+      {/* 🏠 Home (Buyer Dashboard) */}
       <Tabs.Screen
         name="buyer-dashboard"
         options={{
           title: "Home",
-          tabBarIcon: ({
-            color,
-            focused,
-            size,
-          }: {
-            color: string;
-            focused: boolean;
-            size: number;
-          }) => (
+          tabBarIcon: ({ color, focused, size }) => (
             <MaterialCommunityIcons
               name={focused ? "home" : "home-outline"}
               size={size}
@@ -49,22 +42,14 @@ export default function BuyerLayout() {
         }}
       />
 
-      {/* ➕ Add Demand */}
+      {/* 🛒 Marketplace */}
       <Tabs.Screen
-        name="add-demand"
+        name="marketplace"
         options={{
-          title: "Add Demand",
-          tabBarIcon: ({
-            color,
-            focused,
-            size,
-          }: {
-            color: string;
-            focused: boolean;
-            size: number;
-          }) => (
+          title: "Marketplace",
+          tabBarIcon: ({ color, focused, size }) => (
             <MaterialCommunityIcons
-              name={focused ? "plus-box" : "plus-box-outline"}
+              name={focused ? "store" : "store-outline"}
               size={size}
               color={color}
             />
@@ -72,22 +57,14 @@ export default function BuyerLayout() {
         }}
       />
 
-      {/* 📋 My Demands */}
+      {/* 🔔 Notifications */}
       <Tabs.Screen
-        name="my-demands"
+        name="notifications"
         options={{
-          title: "My Demands",
-          tabBarIcon: ({
-            color,
-            focused,
-            size,
-          }: {
-            color: string;
-            focused: boolean;
-            size: number;
-          }) => (
+          title: "Notifications",
+          tabBarIcon: ({ color, focused, size }) => (
             <MaterialCommunityIcons
-              name={focused ? "clipboard-list" : "clipboard-list-outline"}
+              name={focused ? "bell" : "bell-outline"}
               size={size}
               color={color}
             />
@@ -100,15 +77,7 @@ export default function BuyerLayout() {
         name="buyer-profile"
         options={{
           title: "Profile",
-          tabBarIcon: ({
-            color,
-            focused,
-            size,
-          }: {
-            color: string;
-            focused: boolean;
-            size: number;
-          }) => (
+          tabBarIcon: ({ color, focused, size }) => (
             <MaterialCommunityIcons
               name={focused ? "account" : "account-outline"}
               size={size}

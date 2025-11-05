@@ -1,11 +1,10 @@
 import { MaterialCommunityIcons } from "@expo/vector-icons";
-import { Picker } from "@react-native-picker/picker";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import axios from "axios";
 import { useRouter } from "expo-router";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   KeyboardAvoidingView,
   Platform,
   SafeAreaView,
@@ -17,221 +16,132 @@ import {
   View,
 } from "react-native";
 
-const API_BASE = "https://mandiconnect.onrender.com";
-
-const showAlert = (title: string, message: string) => {
-  if (Platform.OS === "web") window.alert(`${title}\n${message}`);
-  else Alert.alert(title, message);
-};
-
-export default function AddPriceScreen() {
+export default function AddCropPrice() {
   const router = useRouter();
+  const BASE_URL = "https://mandiconnect.onrender.com";
 
-  const [loading, setLoading] = useState(false);
-  const [crops, setCrops] = useState<string[]>([]);
-  const [markets, setMarkets] = useState<string[]>([]);
-  const [selectedCrop, setSelectedCrop] = useState("");
-  const [selectedMarket, setSelectedMarket] = useState("");
   const [price, setPrice] = useState("");
-  const [unit, setUnit] = useState("kg");
+  const [quantity, setQuantity] = useState("");
+  const [loading, setLoading] = useState(false);
 
-  const [errors, setErrors] = useState({
-    crop: false,
-    market: false,
-    price: false,
-  });
+  // Replace these IDs if you later want to make them dynamic
+  const cropId = "68cac82afcd7953ed17a3f1c";
+  const marketId = "68cac79cfcd7953ed17a3f18";
 
-  // Fetch crop & market lists
-  useEffect(() => {
-    (async () => {
-      try {
-        const [cropRes, marketRes] = await Promise.all([
-          axios.get(`${API_BASE}/crops`),
-          axios.get(`${API_BASE}/markets`),
-        ]);
-        setCrops(cropRes.data || []);
-        setMarkets(marketRes.data || []);
-      } catch (error) {
-        console.error("Error fetching lists:", error);
-        showAlert("Error", "Failed to load crop or market lists.");
-      }
-    })();
-  }, []);
+  const handleAddPrice = async () => {
+    if (!price || !quantity) {
+      alert("Please enter both price and quantity");
+      return;
+    }
 
-  const validate = () => {
-    const newErrors = {
-      crop: !selectedCrop,
-      market: !selectedMarket,
-      price: !price,
-    };
-    setErrors(newErrors);
-    return !(newErrors.crop || newErrors.market || newErrors.price);
-  };
-
-  const handleSubmit = async () => {
-    if (!validate()) return;
+    setLoading(true);
     try {
-      setLoading(true);
-      await axios.post(`${API_BASE}/prices/add`, {
-        crop: selectedCrop,
-        market: selectedMarket,
+      const token = await AsyncStorage.getItem("token");
+      const farmerId = await AsyncStorage.getItem("userId");
+
+      if (!token || !farmerId) {
+        alert("User not logged in properly");
+        return;
+      }
+
+      const body = {
+        farmer: { id: farmerId },
+        crop: { id: cropId },
+        market: { id: marketId },
         price: Number(price),
-        unit,
+        quantity,
+        photo:
+          "https://res.cloudinary.com/demo/image/upload/sample.jpg",
+        status: "active",
+        feedback: {
+          agreeCount: 0,
+          disagreeCount: 0,
+          votedFarmers: [],
+        },
+      };
+
+      console.log("📤 Sending body:", body);
+
+      const res = await axios.post(`${BASE_URL}/farmer-entries/add`, body, {
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
       });
 
-      showAlert("✅ Success", "Price added successfully!");
-      router.back();
-    } catch (error) {
-      console.error("Error submitting price:", error);
-      showAlert("⚠️ Error", "Unable to submit price at this time.");
+      console.log("✅ Add Response:", res.data);
+      alert("✅ Crop price added successfully!");
+      setPrice("");
+      setQuantity("");
+    } catch (error: any) {
+      console.log("❌ Add Error:", error.response?.data || error.message);
+      alert("Error adding price. Check console for details.");
     } finally {
       setLoading(false);
-    }
-  };
-
-  const addNewCrop = async () => {
-    const newCrop = prompt("Enter new crop name:");
-    if (newCrop) {
-      try {
-        await axios.post(`${API_BASE}/crops/add`, { name: newCrop });
-        setCrops((prev) => [...prev, newCrop]);
-        setSelectedCrop(newCrop);
-      } catch {
-        showAlert("Error", "Failed to add crop.");
-      }
-    }
-  };
-
-  const addNewMarket = async () => {
-    const newMarket = prompt("Enter new market name:");
-    if (newMarket) {
-      try {
-        await axios.post(`${API_BASE}/markets/add`, { name: newMarket });
-        setMarkets((prev) => [...prev, newMarket]);
-        setSelectedMarket(newMarket);
-      } catch {
-        showAlert("Error", "Failed to add market.");
-      }
     }
   };
 
   return (
     <SafeAreaView style={styles.container}>
       <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
         style={{ flex: 1 }}
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
       >
         <ScrollView
-          contentContainerStyle={styles.scrollContent}
+          contentContainerStyle={styles.scrollContainer}
           keyboardShouldPersistTaps="handled"
         >
+          {/* 🔙 Back Button */}
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() => router.back()}
+          >
+            <MaterialCommunityIcons name="arrow-left" size={24} color="#2E7D32" />
+            <Text style={styles.backText}>Back</Text>
+          </TouchableOpacity>
+
           <View style={styles.card}>
-            <Text style={styles.headerTitle}>🌾 Mandi Connect</Text>
-            <Text style={styles.subTitle}>Add Crop Price</Text>
+            <Text style={styles.title}>🌾 Add Crop Price</Text>
 
-            {/* Crop Picker */}
-            <Text style={styles.label}>Select Crop</Text>
-            <View style={styles.inputContainer}>
-              <MaterialCommunityIcons
-                name="sprout-outline"
-                size={20}
-                color="#6b7280"
-              />
-              <Picker
-                style={styles.picker}
-                selectedValue={selectedCrop}
-                onValueChange={(itemValue) =>
-                  itemValue === "add_new"
-                    ? addNewCrop()
-                    : setSelectedCrop(itemValue)
-                }
-              >
-                <Picker.Item label="-- Select Crop --" value="" />
-                {crops.map((crop, i) => (
-                  <Picker.Item key={i} label={crop} value={crop} />
-                ))}
-                <Picker.Item label="+ Add New Crop" value="add_new" />
-              </Picker>
-            </View>
-            {errors.crop && <Text style={styles.errorText}>Crop is required</Text>}
-
-            {/* Market Picker */}
-            <Text style={styles.label}>Select Market</Text>
-            <View style={styles.inputContainer}>
-              <MaterialCommunityIcons
-                name="store-outline"
-                size={20}
-                color="#6b7280"
-              />
-              <Picker
-                style={styles.picker}
-                selectedValue={selectedMarket}
-                onValueChange={(itemValue) =>
-                  itemValue === "add_new"
-                    ? addNewMarket()
-                    : setSelectedMarket(itemValue)
-                }
-              >
-                <Picker.Item label="-- Select Market --" value="" />
-                {markets.map((market, i) => (
-                  <Picker.Item key={i} label={market} value={market} />
-                ))}
-                <Picker.Item label="+ Add New Market" value="add_new" />
-              </Picker>
-            </View>
-            {errors.market && (
-              <Text style={styles.errorText}>Market is required</Text>
-            )}
-
-            {/* Price Input */}
-            <Text style={styles.label}>Enter Price</Text>
-            <View style={styles.inputContainer}>
-              <MaterialCommunityIcons
-                name="cash"
-                size={20}
-                color="#6b7280"
-              />
+            {/* 💰 Price Input */}
+            <View style={styles.inputBox}>
+              <MaterialCommunityIcons name="currency-inr" size={20} color="#555" />
               <TextInput
-                style={styles.input}
                 placeholder="Enter price"
+                placeholderTextColor="#999"
                 keyboardType="numeric"
                 value={price}
                 onChangeText={setPrice}
+                style={styles.input}
               />
             </View>
-            {errors.price && (
-              <Text style={styles.errorText}>Price is required</Text>
-            )}
 
-            {/* Unit Picker */}
-            <Text style={styles.label}>Select Unit</Text>
-            <View style={styles.inputContainer}>
+            {/* 📦 Quantity Input */}
+            <View style={styles.inputBox}>
               <MaterialCommunityIcons
                 name="weight-kilogram"
                 size={20}
-                color="#6b7280"
+                color="#555"
               />
-              <Picker
-                style={styles.picker}
-                selectedValue={unit}
-                onValueChange={setUnit}
-              >
-                <Picker.Item label="Per kg" value="kg" />
-                <Picker.Item label="Per quintal" value="quintal" />
-                <Picker.Item label="Per ton" value="ton" />
-              </Picker>
+              <TextInput
+                placeholder="Enter quantity (e.g. 15 kg)"
+                placeholderTextColor="#999"
+                value={quantity}
+                onChangeText={setQuantity}
+                style={styles.input}
+              />
             </View>
 
-            {/* Submit Button */}
+            {/* ✅ Submit Button */}
             <TouchableOpacity
-              style={[styles.button, loading && { opacity: 0.7 }]}
-              onPress={handleSubmit}
+              style={styles.addButton}
+              onPress={handleAddPrice}
               disabled={loading}
             >
               {loading ? (
-                <ActivityIndicator size="small" color="#fff" />
+                <ActivityIndicator color="#fff" />
               ) : (
-                <Text style={styles.buttonText}>Submit Price</Text>
+                <Text style={styles.addButtonText}>Add Price</Text>
               )}
             </TouchableOpacity>
           </View>
@@ -241,76 +151,77 @@ export default function AddPriceScreen() {
   );
 }
 
-// --- Styles ---
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#f3f4f6" },
-  scrollContent: {
+  container: {
+    flex: 1,
+    backgroundColor: "#F9FAFB",
+  },
+  scrollContainer: {
     flexGrow: 1,
     justifyContent: "center",
     alignItems: "center",
-    padding: 20,
+    padding: 16,
+  },
+  backButton: {
+    position: "absolute",
+    top: 20,
+    left: 16,
+    flexDirection: "row",
+    alignItems: "center",
+    zIndex: 10,
+  },
+  backText: {
+    color: "#2E7D32",
+    fontSize: 16,
+    fontWeight: "600",
+    marginLeft: 4,
   },
   card: {
-    width: "90%",
-    maxWidth: 420,
+    width: "100%",
+    maxWidth: 400,
     backgroundColor: "#fff",
-    borderRadius: 16,
+    borderRadius: 12,
     padding: 20,
+    elevation: 4,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.15,
-    shadowRadius: 6,
-    elevation: 5,
+    shadowRadius: 3.84,
   },
-  headerTitle: {
-    fontSize: 26,
-    fontWeight: "bold",
+  title: {
+    fontSize: 22,
+    fontWeight: "700",
     color: "#2E7D32",
-    textAlign: "center",
-    marginBottom: 8,
-  },
-  subTitle: {
-    fontSize: 18,
-    fontWeight: "600",
-    color: "#1f2937",
     textAlign: "center",
     marginBottom: 16,
   },
-  label: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#374151",
-    marginBottom: 4,
-    marginTop: 8,
-  },
-  inputContainer: {
+  inputBox: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#f9fafb",
+    backgroundColor: "#F3F4F6",
     borderWidth: 1,
-    borderColor: "#d1d5db",
-    borderRadius: 10,
-    paddingHorizontal: 10,
+    borderColor: "#D1D5DB",
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    marginBottom: 12,
+    height: 50,
   },
-  picker: { flex: 1 },
   input: {
     flex: 1,
-    paddingVertical: 12,
-    paddingHorizontal: 8,
     fontSize: 16,
-    color: "#1f2937",
+    paddingHorizontal: 8,
+    color: "#111",
   },
-  button: {
+  addButton: {
     backgroundColor: "#2E7D32",
     paddingVertical: 14,
-    borderRadius: 10,
+    borderRadius: 8,
     alignItems: "center",
-    marginTop: 18,
+    marginTop: 10,
   },
-  buttonText: { color: "#fff", fontWeight: "600", fontSize: 16 },
-  errorText: {
-    color: "red",
-    fontSize: 12,
-    marginTop: 4,
+  addButtonText: {
+    color: "#fff",
+    fontWeight: "600",
+    fontSize: 16,
   },
 });
