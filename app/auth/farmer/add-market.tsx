@@ -1,93 +1,261 @@
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import axios from "axios";
-import { useRouter } from "expo-router";
-import { useState } from "react";
-import { Alert, KeyboardAvoidingView, Platform, SafeAreaView, ScrollView, Text, TextInput, TouchableOpacity, View } from "react-native";
+import * as ImagePicker from "expo-image-picker";
+import { useEffect, useState } from "react";
+import {
+  ActivityIndicator,
+  Alert,
+  Image,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from "react-native";
+
+const BASE_URL = "https://mandiconnect.onrender.com";
 
 export default function AddMarket() {
-  const router = useRouter();
-  const [marketName, setMarketName] = useState("");
-  const [city, setCity] = useState("");
-  const [state, setState] = useState("");
-  const [country, setCountry] = useState("India");
-  const [loading, setLoading] = useState(false);
+  const [cropList, setCropList] = useState<any[]>([]);
+  const [selectedCrop, setSelectedCrop] = useState<string>("");
+  const [selectedMarket, setSelectedMarket] = useState<string>("");
+  const [marketList, setMarketList] = useState<any[]>([]);
+  const [quantity, setQuantity] = useState("");
+  const [price, setPrice] = useState("");
+  const [photoUrl, setPhotoUrl] = useState("");
+  const [uploading, setUploading] = useState(false);
+  const [farmerId, setFarmerId] = useState("");
 
-  const handleAddMarket = async () => {
-    if (!marketName || !city || !state || !country) {
-      Alert.alert("⚠️ Please fill all fields");
-      return;
-    }
+  // Fetch crops, markets, and farmer info
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const token = await AsyncStorage.getItem("token");
+        const farmer = await AsyncStorage.getItem("farmerId");
+        setFarmerId(farmer || "");
 
-    setLoading(true);
-    try {
-      const payload = { marketName, marketAddress: { city, state, country } };
-      const res = await axios.post("https://mandiconnect.onrender.com/farmer/add-market", payload);
+        const [cropRes, marketRes] = await Promise.all([
+          axios.get(`${BASE_URL}/crops/getAll`, {
+            headers: { Authorization: `Bearer ${token}` },
+          }),
+          axios.get(`${BASE_URL}/market/getAll`, {
+            headers: { Authorization: `Bearer ${token}` },
+          }),
+        ]);
 
-      if (res.status === 201 || res.status === 200) {
-        Alert.alert("✅ Market added successfully!");
-        setMarketName(""); setCity(""); setState(""); setCountry("India");
-        router.back(); // back to dashboard
+        setCropList(cropRes.data);
+        setMarketList(marketRes.data);
+      } catch (err) {
+        console.error("❌ Error fetching data:", err);
       }
-    } catch (err: any) {
-      Alert.alert(err.response?.data?.message || "⚠️ Something went wrong");
-      console.error("Add Market Error:", err);
-    } finally {
-      setLoading(false);
+    };
+
+    fetchData();
+  }, []);
+
+  // Pick image
+  const pickImage = async () => {
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [4, 3],
+        quality: 0.8,
+      });
+
+      if (!result.canceled) {
+        await uploadImage(result.assets[0].uri);
+      }
+    } catch (err) {
+      console.error("❌ Error picking image:", err);
     }
   };
 
+  // Upload to backend
+  const uploadImage = async (uri: string) => {
+    setUploading(true);
+    try {
+      const token = await AsyncStorage.getItem("token");
+      const formData = new FormData();
+      formData.append("file", {
+        uri,
+        name: "crop.jpg",
+        type: "image/jpeg",
+      } as any);
+
+      const res = await axios.post(`${BASE_URL}/marketplace/farmer/upload`, formData, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "multipart/form-data",
+        },
+      });
+
+      console.log("✅ Upload response:", res.data);
+      setPhotoUrl(res.data.url);
+      Alert.alert("✅ Upload Successful");
+    } catch (err: any) {
+      console.error("❌ Image upload failed:", err.response?.data || err.message);
+      Alert.alert("Upload Error", "Image upload failed");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  // Submit crop listing
+  const handleSubmit = async () => {
+    if (!selectedCrop || !selectedMarket || !quantity || !price || !photoUrl) {
+      Alert.alert("⚠️ Missing Fields", "Please fill all fields");
+      return;
+    }
+
+    const token = await AsyncStorage.getItem("token");
+
+    const payload = {
+      farmer: farmerId,
+      crop: selectedCrop,
+      market: selectedMarket,
+      quantity,
+      price: parseFloat(price),
+      photo: photoUrl,
+      status: "active",
+    };
+
+    console.log("📦 Payload to backend:", JSON.stringify(payload, null, 2));
+
+    try {
+      const res = await axios.post(`${BASE_URL}/marketplace/farmer/cropListing`, payload, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      console.log("✅ Success response:", res.data);
+      Alert.alert("✅ Success", "Crop listing added successfully");
+      resetForm();
+    } catch (err: any) {
+      console.error("❌ Error adding crop:", err.response?.data || err.message);
+      Alert.alert("Error", "Failed to add crop to marketplace");
+    }
+  };
+
+  const resetForm = () => {
+    setSelectedCrop("");
+    setSelectedMarket("");
+    setQuantity("");
+    setPrice("");
+    setPhotoUrl("");
+  };
+
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: "#f3f4f6" }}>
-      <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
-        <ScrollView contentContainerStyle={{ flexGrow: 1, justifyContent: "center", padding: 20 }}>
-          <View style={{ backgroundColor: "#fff", padding: 20, borderRadius: 16, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 4, elevation: 5 }}>
-            
-            {/* Header */}
-            <Text style={{ fontSize: 28, fontWeight: "700", color: "#2E7D32", marginBottom: 12, textAlign: "center" }}>🌾 Add Market</Text>
-            <Text style={{ fontSize: 14, color: "#4B5563", textAlign: "center", marginBottom: 20 }}>Add new market details to connect with buyers</Text>
+    <ScrollView contentContainerStyle={styles.container}>
+      <Text style={styles.title}>Add Crop to Marketplace</Text>
 
-            {/* Inputs */}
-            {[{ placeholder: "Market Name", value: marketName, onChange: setMarketName },
-              { placeholder: "City", value: city, onChange: setCity },
-              { placeholder: "State", value: state, onChange: setState },
-              { placeholder: "Country", value: country, onChange: setCountry }
-            ].map((input, idx) => (
-              <TextInput
-                key={idx}
-                placeholder={input.placeholder}
-                value={input.value}
-                onChangeText={input.onChange}
-                placeholderTextColor="#6B7280"
-                style={{
-                  borderWidth: 1,
-                  borderColor: "#D1D5DB",
-                  borderRadius: 12,
-                  padding: 14,
-                  marginBottom: 16,
-                  backgroundColor: "#F9FAFB",
-                  fontSize: 16,
-                  color: "#111827"
-                }}
-              />
-            ))}
+      {/* Crop dropdown */}
+      <Text style={styles.label}>Select Crop</Text>
+      <ScrollView style={styles.dropdown}>
+        {cropList.map((crop) => (
+          <TouchableOpacity
+            key={crop.id}
+            onPress={() => setSelectedCrop(crop.id)}
+            style={[styles.dropdownItem, selectedCrop === crop.id && styles.selectedItem]}
+          >
+            <Text>{crop.name}</Text>
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
 
-            {/* Button */}
-            <TouchableOpacity
-              onPress={handleAddMarket}
-              disabled={loading}
-              style={{
-                backgroundColor: "#2E7D32",
-                paddingVertical: 16,
-                borderRadius: 12,
-                alignItems: "center"
-              }}
-            >
-              <Text style={{ color: "#fff", fontWeight: "600", fontSize: 16 }}>
-                {loading ? "Adding..." : "Add Market"}
-              </Text>
-            </TouchableOpacity>
-          </View>
-        </ScrollView>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+      {/* Market dropdown */}
+      <Text style={styles.label}>Select Market</Text>
+      <ScrollView style={styles.dropdown}>
+        {marketList.map((mkt) => (
+          <TouchableOpacity
+            key={mkt.id}
+            onPress={() => setSelectedMarket(mkt.id)}
+            style={[styles.dropdownItem, selectedMarket === mkt.id && styles.selectedItem]}
+          >
+            <Text>{mkt.name}</Text>
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
+
+      {/* Quantity */}
+      <View style={styles.inputContainer}>
+        <Text style={styles.label}>Quantity</Text>
+        <TextInput
+          style={styles.input}
+          placeholder="Enter quantity"
+          value={quantity}
+          onChangeText={setQuantity}
+        />
+      </View>
+
+      {/* Price */}
+      <View style={styles.inputContainer}>
+        <Text style={styles.label}>Price</Text>
+        <TextInput
+          style={styles.input}
+          placeholder="Enter price"
+          keyboardType="numeric"
+          value={price}
+          onChangeText={setPrice}
+        />
+      </View>
+
+      {/* Upload */}
+      <TouchableOpacity onPress={pickImage} style={styles.uploadBtn}>
+        <Text style={styles.uploadText}>{photoUrl ? "Change Image" : "Upload Image"}</Text>
+      </TouchableOpacity>
+      {uploading && <ActivityIndicator size="small" color="#007bff" />}
+      {photoUrl ? <Image source={{ uri: photoUrl }} style={styles.imagePreview} /> : null}
+
+      {/* Submit */}
+      <TouchableOpacity style={styles.submitBtn} onPress={handleSubmit}>
+        <Text style={styles.submitText}>Add to Marketplace</Text>
+      </TouchableOpacity>
+    </ScrollView>
   );
 }
+
+const styles = StyleSheet.create({
+  container: { padding: 20, backgroundColor: "#f9f9f9" },
+  title: { fontSize: 22, fontWeight: "700", marginBottom: 15 },
+  label: { marginVertical: 8, fontWeight: "600" },
+  inputContainer: { marginBottom: 10 },
+  input: {
+    borderWidth: 1,
+    borderColor: "#ccc",
+    borderRadius: 10,
+    padding: 10,
+    backgroundColor: "#fff",
+  },
+  dropdown: {
+    backgroundColor: "#fff",
+    borderWidth: 1,
+    borderColor: "#ccc",
+    borderRadius: 10,
+    maxHeight: 150,
+    marginBottom: 10,
+  },
+  dropdownItem: {
+    padding: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: "#eee",
+  },
+  selectedItem: { backgroundColor: "#d0e8ff" },
+  uploadBtn: {
+    backgroundColor: "#007bff",
+    padding: 10,
+    borderRadius: 10,
+    alignItems: "center",
+    marginBottom: 10,
+  },
+  uploadText: { color: "#fff", fontWeight: "600" },
+  imagePreview: { width: "100%", height: 180, borderRadius: 10, marginBottom: 15 },
+  submitBtn: {
+    backgroundColor: "#28a745",
+    padding: 12,
+    borderRadius: 10,
+    alignItems: "center",
+    marginTop: 10,
+  },
+  submitText: { color: "#fff", fontWeight: "700" },
+});
