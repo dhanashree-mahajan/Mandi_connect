@@ -5,7 +5,6 @@ import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   FlatList,
   Image,
   RefreshControl,
@@ -15,20 +14,18 @@ import {
   View,
 } from "react-native";
 
+const BASE_URL = "https://mandiconnect.onrender.com";
+
 const Marketplace = () => {
   const [listings, setListings] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [farmerId, setFarmerId] = useState("");
 
-  const BASE_URL = "https://mandiconnect.onrender.com"; // ✅ backend base URL
   const router = useRouter();
 
   useEffect(() => {
     const fetchData = async () => {
       const token = await AsyncStorage.getItem("token");
-      const farmer = await AsyncStorage.getItem("farmerId");
-      setFarmerId(farmer || "");
       await getAllListings(token);
     };
     fetchData();
@@ -43,7 +40,6 @@ const Marketplace = () => {
       setListings(res.data);
     } catch (err) {
       console.log("Error fetching listings", err);
-      Alert.alert("Error", "Failed to load marketplace listings");
     } finally {
       setLoading(false);
     }
@@ -56,54 +52,53 @@ const Marketplace = () => {
     setRefreshing(false);
   };
 
-  const handleDelete = async (publicId: string) => {
-    Alert.alert("Confirm Delete", "Are you sure you want to delete this listing?", [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Delete",
-        onPress: async () => {
-          try {
-            const token = await AsyncStorage.getItem("token");
-            await axios.delete(`${BASE_URL}/marketplace/farmer/delete?public_id=${publicId}`, {
-              headers: { Authorization: `Bearer ${token}` },
-            });
-            Alert.alert("Deleted", "Listing removed successfully");
-            onRefresh();
-          } catch (err) {
-            Alert.alert("Error", "Failed to delete listing");
-          }
-        },
-      },
-    ]);
-  };
-
   const renderItem = ({ item }: any) => (
     <View style={styles.card}>
-      <Image source={{ uri: item.photoUrl }} style={styles.image} />
+      {/* Left Image */}
+      <Image
+        source={{
+          uri:
+            item.photoUrl && item.photoUrl.startsWith("http")
+              ? item.photoUrl
+              : "https://cdn-icons-png.flaticon.com/512/149/149071.png",
+        }}
+        style={styles.image}
+      />
+
+      {/* Right Content */}
       <View style={styles.info}>
         <Text style={styles.cropName}>{item.crop?.name || "Unknown Crop"}</Text>
         <Text style={styles.price}>₹ {item.price} / {item.unit}</Text>
-        <Text style={styles.detail}>Qty: {item.quantity} {item.unit}</Text>
-        <Text style={styles.detail}>
-          📍 {item.location?.city}, {item.location?.state}
-        </Text>
-        <Text style={[styles.status, { color: item.status === "active" ? "#28a745" : "#ff0000" }]}>
-          Status: {item.status}
-        </Text>
-      </View>
 
-      {item.farmer?.id === farmerId && (
-        <TouchableOpacity style={styles.deleteBtn} onPress={() => handleDelete(item.publicId)}>
-          <MaterialCommunityIcons name="delete-outline" size={22} color="#fff" />
+        <View style={{ marginTop: 4 }}>
+          <Text style={styles.detail}>Qty: {item.quantity} {item.unit}</Text>
+          <Text style={styles.detail}>📍 {item.location?.city}, {item.location?.state}</Text>
+          <Text style={[styles.status, { color: item.status === "active" ? "#2E7D32" : "#FF0000" }]}>
+            ● {item.status}
+          </Text>
+        </View>
+
+        {/* Premium View Button */}
+        <TouchableOpacity
+          style={styles.viewBtn}
+          onPress={() =>
+            router.push({
+              pathname: "/auth/farmer/market-details",
+              params: { item: JSON.stringify(item) },
+            })
+          }
+        >
+          <Text style={styles.viewBtnText}>View Details</Text>
+          <MaterialCommunityIcons name="chevron-right" size={18} color="#2E7D32" />
         </TouchableOpacity>
-      )}
+      </View>
     </View>
   );
 
   if (loading) {
     return (
       <View style={styles.loaderContainer}>
-        <ActivityIndicator size="large" color="#007bff" />
+        <ActivityIndicator size="large" color="#2E7D32" />
         <Text>Loading listings...</Text>
       </View>
     );
@@ -111,19 +106,31 @@ const Marketplace = () => {
 
   return (
     <View style={styles.container}>
-      {/* ✅ Header */}
-      <Text style={styles.headerTitle}>Farmer Marketplace</Text>
+
+      {/* Header */}
+      <View style={styles.header}>
+        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+          <MaterialCommunityIcons name="arrow-left" size={26} color="#2E7D32" />
+        </TouchableOpacity>
+
+        <View style={styles.headerCenter}>
+          <MaterialCommunityIcons name="storefront" size={30} color="#2E7D32" />
+          <Text style={styles.headerTitle}>Farmer Marketplace</Text>
+        </View>
+
+        <View style={{ width: 40 }} />
+      </View>
 
       <FlatList
         data={listings}
-        keyExtractor={(item) => item.id?.toString()}
+        keyExtractor={(item) => item._id?.toString() || item.id?.toString()}
         renderItem={renderItem}
-        contentContainerStyle={{ paddingBottom: 80 }}
+        contentContainerStyle={{ paddingBottom: 100 }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
         ListEmptyComponent={<Text style={styles.emptyText}>No listings found yet.</Text>}
       />
 
-      {/* ✅ Floating Add Button */}
+      {/* Floating Add Button */}
       <TouchableOpacity
         style={styles.addButton}
         onPress={() => router.push("/auth/farmer/add-market")}
@@ -135,73 +142,82 @@ const Marketplace = () => {
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#f4f4f4",
-    padding: 10,
+  container: { flex: 1, backgroundColor: "#F9FAFB", padding: 10 },
+
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 4,
+    marginBottom: 8,
+    borderBottomWidth: 1,
+    borderColor: "#E5E7EB",
+    paddingBottom: 8,
+  },
+  backButton: {
+    padding: 6,
+    backgroundColor: "#E8F5E9",
+    borderRadius: 8,
+  },
+  headerCenter: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
   },
   headerTitle: {
     fontSize: 22,
     fontWeight: "700",
-    textAlign: "center",
-    marginBottom: 10,
-    color: "#2b7a0b",
+    color: "#2E7D32",
   },
-  loaderContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-  },
+
+  loaderContainer: { flex: 1, justifyContent: "center", alignItems: "center" },
+
   card: {
+    flexDirection: "row",
     backgroundColor: "#fff",
-    borderRadius: 12,
+    borderRadius: 14,
     marginVertical: 8,
     padding: 10,
     elevation: 3,
-    shadowColor: "#000",
-    shadowOpacity: 0.1,
-    shadowRadius: 3,
+    borderWidth: 1,
+    borderColor: "#EAEAEA",
   },
   image: {
-    width: "100%",
-    height: 160,
-    borderRadius: 10,
+    width: 90,
+    height: 90,
+    borderRadius: 12,
+    marginRight: 10,
   },
-  info: {
+  info: { flex: 1, justifyContent: "space-between" },
+  cropName: { fontSize: 17, fontWeight: "700", color: "#111" },
+  price: { fontSize: 15, fontWeight: "600", color: "#2E7D32", marginTop: 2 },
+  detail: { fontSize: 13, color: "#555" },
+  status: { fontSize: 12, fontWeight: "600", marginTop: 4 },
+
+  viewBtn: {
     marginTop: 8,
+    alignSelf: "flex-end",
+    borderWidth: 1.5,
+    borderColor: "#2E7D32",
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 20,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: "#fff",
   },
-  cropName: {
-    fontSize: 18,
-    fontWeight: "700",
-  },
-  price: {
-    fontSize: 16,
+  viewBtnText: {
+    color: "#2E7D32",
     fontWeight: "600",
-    color: "#007bff",
-    marginTop: 2,
+    fontSize: 13.5,
   },
-  detail: {
-    fontSize: 14,
-    color: "#555",
-  },
-  status: {
-    fontSize: 13,
-    fontWeight: "600",
-    marginTop: 5,
-  },
-  deleteBtn: {
-    position: "absolute",
-    top: 10,
-    right: 10,
-    backgroundColor: "#ff4d4d",
-    padding: 6,
-    borderRadius: 8,
-  },
+
   addButton: {
     position: "absolute",
-    bottom: 20,
-    right: 20,
-    backgroundColor: "#2b7a0b",
+    bottom: 24,
+    right: 24,
+    backgroundColor: "#2E7D32",
     borderRadius: 50,
     width: 56,
     height: 56,
@@ -209,12 +225,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     elevation: 5,
   },
-  emptyText: {
-    textAlign: "center",
-    marginTop: 40,
-    fontSize: 16,
-    color: "#777",
-  },
+
+  emptyText: { textAlign: "center", marginTop: 40, fontSize: 16, color: "#777" },
 });
 
 export default Marketplace;

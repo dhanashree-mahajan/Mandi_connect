@@ -1,313 +1,520 @@
+// app/auth/farmer/farmer-dashboard.tsx
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import axios, { AxiosResponse } from "axios";
 import { useRouter } from "expo-router";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
-  Platform,
+  Modal,
   RefreshControl,
+  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
   useWindowDimensions,
 } from "react-native";
 
-export default function FarmerDashboard() {
+const BASE_URL = "https://mandiconnect.onrender.com";
+
+/** Types */
+type Crop = { _id: string; name: string; type?: string; displayUnit?: string };
+type Market = { _id: string; marketName?: string; marketAddress?: any };
+type Entry = {
+  _id?: string;
+  id?: string;
+  crop?: any;
+  cropName?: string;
+  cropId?: string;
+  market?: any;
+  marketName?: string;
+  marketId?: string;
+  price?: number;
+  quantity?: string;
+  status?: string;
+  createdAt?: string;
+  [key: string]: any;
+};
+
+/* ---------- Helpers (single source of truth) ---------- */
+const computePriceStats = (list: Entry[], cropId?: string | null) => {
+  const filtered = cropId
+    ? list.filter((e) => {
+        const cid = e.crop?._id || e.crop?.id || e.cropId || e.crop;
+        return String(cid) === String(cropId);
+      })
+    : list;
+
+  const prices = filtered
+    .map((e) => Number(e.price ?? e.rate ?? 0))
+    .filter((p) => !Number.isNaN(p));
+
+  if (prices.length === 0) return { count: 0, min: 0, avg: 0, max: 0 };
+
+  const min = Math.min(...prices);
+  const max = Math.max(...prices);
+  const sum = prices.reduce((a, b) => a + b, 0);
+  const avg = Math.round((sum / prices.length) * 100) / 100;
+
+  return { count: prices.length, min, avg, max };
+};
+
+const formatEntry = (item: Entry) => {
+  const cropName = item.crop?.name || item.cropName || "Unknown Crop";
+  const marketName = item.market?.marketName || item.marketName || item.mandi?.name || "Unknown Market";
+  const price = item.price ?? item.rate ?? 0;
+  const quantity = item.quantity ?? item.crop?.displayUnit ?? "";
+  const status = item.status ?? "active";
+  const time = item.createdAt ? new Date(item.createdAt).toLocaleString() : "N/A";
+  return { cropName, marketName, price, quantity, status, time };
+};
+
+export default function FarmerDashboard(): JSX.Element {
   const router = useRouter();
-  const { height } = useWindowDimensions();
-  const [activeTab, setActiveTab] = useState<"market" | "community">("market");
-  const [marketData, setMarketData] = useState<any[]>([]);
+  const { height, width } = useWindowDimensions();
+
+  const [activeTab, setActiveTab] = useState<"community" | "marketStats">("community");
   const [loading, setLoading] = useState<boolean>(false);
-  const [refreshing, setRefreshing] = useState(false);
+  const [refreshing, setRefreshing] = useState<boolean>(false);
 
-  // When user taps "Community" on an entry, we keep track so that the
-  // UI can show the community results but still use same layout.
-  const [isCommunityView, setIsCommunityView] = useState(false);
-  const [communityFor, setCommunityFor] = useState<{ cropId: string; marketId: string } | null>(null);
+  const [communityEntries, setCommunityEntries] = useState<Entry[]>([]);
+  const [marketStatsEntries, setMarketStatsEntries] = useState<Entry[]>([]);
 
-  const BASE_URL = "https://mandiconnect.onrender.com";
+  const [filterType, setFilterType] = useState<"all" | "crop" | "market">("all");
+  const [searchText, setSearchText] = useState<string>("");
+  const [crops, setCrops] = useState<Crop[]>([]);
+  const [markets, setMarkets] = useState<Market[]>([]);
+  const [selectedCropId, setSelectedCropId] = useState<string | null>(null);
+  const [selectedMarketId, setSelectedMarketId] = useState<string | null>(null);
 
-  // fetch either all entries, or user's entries (by farmer id).
-  const fetchMarketData = async () => {
-    setLoading(true);
-    try {
-      const token = await AsyncStorage.getItem("token");
-      const farmerId = await AsyncStorage.getItem("userId");
+  const [viewEntry, setViewEntry] = useState<Entry | null>(null);
 
-      if (!token) {
-        console.warn("⚠️ No token found in AsyncStorage");
-        setLoading(false);
-        return;
-      }
+  const scrollHeight = height - 200;
 
-      if (!farmerId) {
-        console.warn("⚠️ No userId found in AsyncStorage");
-        setLoading(false);
-        return;
-      }
-
-      let endpoint = "";
-      let headers: Record<string, string> = {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      };
-
-      // Market tab shows all entries
-      if (activeTab === "market") {
-        endpoint = `${BASE_URL}/farmer-entries/getAllEntries`;
-        setIsCommunityView(false);
-        setCommunityFor(null);
-      } else {
-        // Community tab (as per your design) — show that farmer's own entries
-        endpoint = `${BASE_URL}/farmer-entries/getByFarmerId/${farmerId}`;
-        setIsCommunityView(false);
-        setCommunityFor(null);
-      }
-
-      const response = await fetch(endpoint, { headers });
-      if (!response.ok) {
-        console.error(`❌ API Error: ${response.status}`);
-        setMarketData([]);
-        setLoading(false);
-        return;
-      }
-
-      const data = await response.json();
-
-      // Keep ids so we can fetch community by crop+market later
-      const formatted = (data || []).map((item: any) => ({
-        raw: item,
-        id: item._id || item.id,
-        cropId: item.crop?.id || item.crop?._id || item.crop,
-        marketId: item.market?.id || item.market?._id || item.market,
-        cropName: item.crop?.name || item.cropName || "Unknown Crop",
-        market: item.market?.marketName || item.market?.name || "N/A",
-        price: item.price || 0,
-        quantity: item.quantity || "",
-        status: item.status || "active",
-        time: item.createdAt ? new Date(item.createdAt).toLocaleString() : "N/A",
-      }));
-
-      setMarketData(formatted);
-    } catch (error) {
-      console.error("❌ Fetch error:", error);
-      setMarketData([]);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
+  // ---------- Auth header helper ----------
+  const getAuthHeaders = async (): Promise<{ Authorization: string }> => {
+    const token = await AsyncStorage.getItem("token");
+    if (!token) {
+      console.log("Auth required: missing token. Please login again.");
+      throw new Error("Missing token");
     }
+    return { Authorization: `Bearer ${token}` };
   };
 
-  useEffect(() => {
-    fetchMarketData();
-  }, [activeTab]);
-
-  const onRefresh = async () => {
-    setRefreshing(true);
-    // If currently viewing community results for a crop/market, refresh that
-    if (isCommunityView && communityFor) {
-      await fetchCommunity(communityFor.cropId, communityFor.marketId);
-    } else {
-      await fetchMarketData();
-    }
-  };
-
-  // Fetch community prices for specific crop + market and display them in same UI
-  const fetchCommunity = async (cropId: string, marketId: string) => {
-    setLoading(true);
+  // ---------- Fetch helpers ----------
+  const fetchCrops = async (): Promise<void> => {
     try {
-      const token = await AsyncStorage.getItem("token");
-      if (!token) {
-        Alert.alert("Auth error", "Missing token. Please login again.");
-        setLoading(false);
-        return;
-      }
-
-      const endpoint = `${BASE_URL}/farmer-entries/getByCropAndMarket/${cropId}/${marketId}`;
-      const headers = {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      };
-
-      const response = await fetch(endpoint, { headers });
-      if (!response.ok) {
-        console.error("❌ Community fetch failed:", response.status);
-        setMarketData([]);
-        setIsCommunityView(false);
-        setCommunityFor(null);
-        return;
-      }
-
-      const data = await response.json();
-      const formatted = (data || []).map((item: any) => ({
-        raw: item,
-        id: item._id || item.id,
-        cropId: item.crop?.id || item.crop?._id || item.crop,
-        marketId: item.market?.id || item.market?._id || item.market,
-        cropName: item.crop?.name || item.cropName || "Unknown Crop",
-        market: item.market?.marketName || item.market?.name || "N/A",
-        price: item.price || 0,
-        quantity: item.quantity || "",
-        status: item.status || "active",
-        time: item.createdAt ? new Date(item.createdAt).toLocaleString() : "N/A",
-      }));
-
-      setMarketData(formatted);
-      setIsCommunityView(true);
-      setCommunityFor({ cropId, marketId });
+      const headers = await getAuthHeaders();
+      const res: AxiosResponse = await axios.get(`${BASE_URL}/getAllCrop`, { headers });
+      setCrops(Array.isArray(res.data) ? res.data : []);
     } catch (err) {
-      console.error("❌ Error fetching community:", err);
-      Alert.alert("Error", "Failed to fetch community prices.");
-      setMarketData([]);
-      setIsCommunityView(false);
-      setCommunityFor(null);
+      console.log("Failed to load crops:", err);
+      setCrops([]);
+    }
+  };
+
+  const fetchMarkets = async (): Promise<void> => {
+    try {
+      const headers = await getAuthHeaders();
+      const res: AxiosResponse = await axios.get(`${BASE_URL}/getAllMarket`, { headers });
+      setMarkets(Array.isArray(res.data) ? res.data : []);
+    } catch (err) {
+      console.log("Failed to load markets:", err);
+      setMarkets([]);
+    }
+  };
+
+  const fetchCommunityEntries = async (): Promise<void> => {
+    setLoading(true);
+    try {
+      const headers = await getAuthHeaders();
+      const res: AxiosResponse = await axios.get(`${BASE_URL}/farmer-entries/getAllEntries`, { headers });
+      setCommunityEntries(Array.isArray(res.data) ? res.data : []);
+    } catch (err) {
+      console.log("Failed to load community entries:", err);
+      setCommunityEntries([]);
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
   };
 
-  const handleViewCommunityFor = (item: any) => {
-    const { cropId, marketId } = item;
-    if (!cropId || !marketId) {
-      Alert.alert("Missing IDs", "This entry is missing crop or market id.");
-      return;
+  const fetchMarketStatsAll = async (): Promise<void> => {
+    setLoading(true);
+    try {
+      const headers = await getAuthHeaders();
+      const [listingRes, entriesRes] = await Promise.all([
+        axios.get(`${BASE_URL}/marketplace/farmer/getAllListing`, { headers }),
+        axios.get(`${BASE_URL}/farmer-entries/getAllEntries`, { headers }),
+      ]);
+      const merged = [
+        ...(Array.isArray(listingRes.data) ? listingRes.data : []),
+        ...(Array.isArray(entriesRes.data) ? entriesRes.data : []),
+      ];
+      setMarketStatsEntries(merged);
+    } catch (err) {
+      console.log("Failed to load market statistics:", err);
+      setMarketStatsEntries([]);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
     }
-    fetchCommunity(cropId, marketId);
   };
 
-  const scrollHeight = Platform.OS === "web" ? height - 200 : undefined;
+  const fetchMarketStatsByCrop = async (cropId?: string): Promise<void> => {
+    setLoading(true);
+    try {
+      const headers = await getAuthHeaders();
+      const res: AxiosResponse = await axios.get(`${BASE_URL}/farmer-entries/getAllEntries`, { headers });
+      const all = Array.isArray(res.data) ? res.data : [];
 
+      const filtered = cropId
+        ? all.filter((e: Entry) => {
+            const cid = e.crop?._id || e.crop?.id || e.cropId || e.crop;
+            return String(cid) === String(cropId);
+          })
+        : all.filter((e: Entry) => {
+            const name = (e.crop?.name || e.cropName || "").toLowerCase();
+            return name.includes(searchText.trim().toLowerCase());
+          });
+
+      setMarketStatsEntries(filtered);
+    } catch (err) {
+      console.log("Failed to fetch crop stats:", err);
+      setMarketStatsEntries([]);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+
+  const fetchMarketStatsByMarket = async (marketId?: string): Promise<void> => {
+    setLoading(true);
+    try {
+      const headers = await getAuthHeaders();
+      const res: AxiosResponse = await axios.get(`${BASE_URL}/marketplace/farmer/getAllListing`, { headers });
+      const all = Array.isArray(res.data) ? res.data : [];
+
+      const filtered = marketId
+        ? all.filter((e: Entry) => {
+            const mid = e.market?._id || e.market?.id || e.marketId || e.market;
+            return String(mid) === String(marketId);
+          })
+        : all.filter((e: Entry) => {
+            const mName = (e.market?.marketName || e.marketName || "").toLowerCase();
+            return mName.includes(searchText.trim().toLowerCase());
+          });
+
+      setMarketStatsEntries(filtered);
+    } catch (err) {
+      console.log("Failed to fetch market stats:", err);
+      setMarketStatsEntries([]);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+
+  // ---------- Initial load ----------
+  useEffect(() => {
+    (async () => {
+      await Promise.all([fetchCrops(), fetchMarkets()]);
+    })();
+  }, []);
+
+  // Fetch when tab/filter changes
+  useEffect(() => {
+    (async () => {
+      if (activeTab === "community") {
+        await fetchCommunityEntries();
+      } else {
+        if (filterType === "all") await fetchMarketStatsAll();
+        else if (filterType === "crop") await fetchMarketStatsByCrop(selectedCropId || undefined);
+        else if (filterType === "market") await fetchMarketStatsByMarket(selectedMarketId || undefined);
+      }
+    })();
+  }, [activeTab, filterType, selectedCropId, selectedMarketId, searchText]);
+
+  // ---------- Derived lists ----------
+  const filteredCommunityEntries = useMemo(() => communityEntries, [communityEntries]);
+
+  const filteredMarketStatsEntries = useMemo(() => {
+    if (!searchText.trim()) return marketStatsEntries;
+    const q = searchText.trim().toLowerCase();
+    return marketStatsEntries.filter((e) => {
+      const crop = (e.crop?.name || e.cropName || "").toLowerCase();
+      const market = (e.market?.marketName || e.marketName || "").toLowerCase();
+      return crop.includes(q) || market.includes(q);
+    });
+  }, [marketStatsEntries, searchText]);
+
+  // ---------- Pull to refresh ----------
+  const onRefresh = async (): Promise<void> => {
+    setRefreshing(true);
+    if (activeTab === "community") await fetchCommunityEntries();
+    else {
+      if (filterType === "all") await fetchMarketStatsAll();
+      else if (filterType === "crop") await fetchMarketStatsByCrop(selectedCropId || undefined);
+      else if (filterType === "market") await fetchMarketStatsByMarket(selectedMarketId || undefined);
+    }
+    setRefreshing(false);
+  };
+
+  // ---------- Navigation ----------
+  const goBack = () => {
+    router.back(); // proper back behavior
+  };
+
+  // ---------- Render ----------
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <MaterialCommunityIcons name="leaf" size={26} color="#2E7D32" />
-        <Text style={styles.headerTitle}>Farmer’s Hub</Text>
+        <TouchableOpacity onPress={goBack} style={styles.backButton}>
+          <MaterialCommunityIcons name="arrow-left" size={26} color="#2E7D32" />
+        </TouchableOpacity>
+
+        <View style={styles.headerCenter}>
+          <MaterialCommunityIcons name="leaf" size={34} color="#2E7D32" />
+          <Text style={styles.headerTitle}>Farmer’s Hub</Text>
+        </View>
+
+        <View style={{ width: 40 }} />
       </View>
 
       {/* Tabs */}
       <View style={styles.toggleContainer}>
         <TouchableOpacity
-          style={[
-            styles.toggleButton,
-            activeTab === "market" && styles.toggleActive,
-          ]}
+          style={[styles.toggleButton, activeTab === "community" && styles.toggleActive]}
           onPress={() => {
-            setActiveTab("market");
+            setActiveTab("community");
+            setFilterType("all");
           }}
         >
-          <Text
-            style={[
-              styles.toggleText,
-              activeTab === "market" && styles.toggleTextActive,
-            ]}
-          >
-            All Market Prices
+          <Text style={[styles.toggleText, activeTab === "community" && styles.toggleTextActive]}>
+            Community Price
           </Text>
         </TouchableOpacity>
 
         <TouchableOpacity
-          style={[
-            styles.toggleButton,
-            activeTab === "community" && styles.toggleActive,
-          ]}
+          style={[styles.toggleButton, activeTab === "marketStats" && styles.toggleActive]}
           onPress={() => {
-            setActiveTab("community");
+            setActiveTab("marketStats");
+            setFilterType("all");
           }}
         >
-          <Text
-            style={[
-              styles.toggleText,
-              activeTab === "community" && styles.toggleTextActive,
-            ]}
-          >
-            Community Prices
+          <Text style={[styles.toggleText, activeTab === "marketStats" && styles.toggleTextActive]}>
+            All Statistics
           </Text>
         </TouchableOpacity>
       </View>
 
-      {/* Data List */}
+      {/* Filters & Search */}
+      <View style={{ marginTop: 12 }}>
+        {activeTab === "marketStats" && (
+          <>
+            <TextInput
+              placeholder="Search crop or market name..."
+              value={searchText}
+              onChangeText={setSearchText}
+              style={styles.input}
+            />
+
+            <View style={{ flexDirection: "row", marginTop: 8 }}>
+              <TouchableOpacity
+                style={[styles.smallFilter, filterType === "all" && styles.smallFilterActive]}
+                onPress={() => {
+                  setFilterType("all");
+                  setSelectedCropId(null);
+                  setSelectedMarketId(null);
+                }}
+              >
+                <Text style={filterType === "all" ? styles.smallFilterTextActive : styles.smallFilterText}>All</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.smallFilter, filterType === "crop" && styles.smallFilterActive]}
+                onPress={() => {
+                  setFilterType("crop");
+                  setSelectedMarketId(null);
+                }}
+              >
+                <Text style={filterType === "crop" ? styles.smallFilterTextActive : styles.smallFilterText}>By Crop</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.smallFilter, filterType === "market" && styles.smallFilterActive]}
+                onPress={() => {
+                  setFilterType("market");
+                  setSelectedCropId(null);
+                }}
+              >
+                <Text style={filterType === "market" ? styles.smallFilterTextActive : styles.smallFilterText}>By Market</Text>
+              </TouchableOpacity>
+            </View>
+
+            {filterType === "crop" && (
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 10 }}>
+                {crops.map((c: Crop, idx) => (
+                  <TouchableOpacity
+                    key={c._id || idx}
+                    onPress={() => setSelectedCropId(c._id)}
+                    style={[styles.pill, selectedCropId === c._id && styles.pillActive]}
+                  >
+                    <Text style={selectedCropId === c._id ? styles.pillTextActive : styles.pillText}>{c.name}</Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            )}
+
+            {filterType === "market" && (
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 10 }}>
+                {markets.map((m: Market, idx) => (
+                  <TouchableOpacity
+                    key={m._id || idx}
+                    onPress={() => setSelectedMarketId(m._id)}
+                    style={[styles.pill, selectedMarketId === m._id && styles.pillActive]}
+                  >
+                    <Text style={selectedMarketId === m._id ? styles.pillTextActive : styles.pillText}>
+                      {m.marketName}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            )}
+          </>
+        )}
+      </View>
+
+      {/* Entries list */}
       <ScrollView
+        contentContainerStyle={{ paddingBottom: 140 }}
         style={[styles.scrollContainer, { height: scrollHeight }]}
-        contentContainerStyle={{ paddingBottom: 100 }}
-        showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
         {loading ? (
-          <ActivityIndicator size="large" color="#2E7D32" style={{ marginTop: 50 }} />
-        ) : marketData.length === 0 ? (
-          <Text style={styles.emptyText}>
-            {activeTab === "market"
-              ? "No market data available."
-              : isCommunityView
-              ? "No community entries found for this crop/market."
-              : "You haven’t added any entries yet."}
-          </Text>
+          <ActivityIndicator size="large" color="#2E7D32" style={{ marginTop: 40 }} />
+        ) : activeTab === "community" ? (
+          filteredCommunityEntries.length === 0 ? (
+            <Text style={styles.emptyText}>No community entries found.</Text>
+          ) : (
+            filteredCommunityEntries.map((entry: Entry, idx: number) => {
+              const { cropName, marketName, price, quantity, status, time } = formatEntry(entry);
+              return (
+                <View key={entry._id || entry.id || idx} style={[styles.card, width < 360 ? { padding: 10 } : {}]}>
+                  <View style={styles.cardHeader}>
+                    <Text style={styles.category}>{status}</Text>
+                    <Text style={styles.price}>₹{price}</Text>
+                  </View>
+
+                  <Text style={styles.cropName}>{cropName}</Text>
+                  <Text style={styles.variety}>{quantity}</Text>
+
+                  <View style={styles.footer}>
+                    <View style={styles.footerRow}>
+                      <MaterialCommunityIcons name="map-marker" size={14} color="#757575" />
+                      <Text style={styles.footerText}>{marketName}</Text>
+                    </View>
+                    <View style={styles.footerRow}>
+                      <MaterialCommunityIcons name="clock-outline" size={14} color="#757575" />
+                      <Text style={styles.footerText}>{time}</Text>
+                    </View>
+                  </View>
+
+                  <TouchableOpacity onPress={() => setViewEntry(entry)} style={styles.viewButton}>
+                    <Text style={styles.viewButtonText}>View</Text>
+                  </TouchableOpacity>
+                </View>
+              );
+            })
+          )
+        ) : filteredMarketStatsEntries.length === 0 ? (
+          <Text style={styles.emptyText}>No market statistics found.</Text>
         ) : (
-          marketData.map((item, index) => (
-            <View key={item.id || index} style={styles.card}>
-              <View style={styles.cardHeader}>
-                <Text style={styles.category}>{item.status}</Text>
-                <Text style={styles.price}>₹{item.price}</Text>
-              </View>
-
-              <Text style={styles.cropName}>{item.cropName}</Text>
-              <Text style={styles.variety}>{item.quantity}</Text>
-
-              <View style={styles.footer}>
-                <View style={styles.footerRow}>
-                  <MaterialCommunityIcons name="map-marker" size={14} color="#757575" />
-                  <Text style={styles.footerText}>{item.market}</Text>
+          filteredMarketStatsEntries.map((entry: Entry, idx: number) => {
+            const { cropName, marketName, price, quantity, status, time } = formatEntry(entry);
+            return (
+              <View key={entry._id || entry.id || idx} style={[styles.card, width < 360 ? { padding: 10 } : {}]}>
+                <View style={styles.cardHeader}>
+                  <Text style={styles.category}>{status}</Text>
+                  <Text style={styles.price}>₹{price}</Text>
                 </View>
 
-                <View style={styles.footerRow}>
-                  <MaterialCommunityIcons name="clock-outline" size={14} color="#757575" />
-                  <Text style={styles.footerText}>{item.time}</Text>
-                </View>
-              </View>
+                <Text style={styles.cropName}>{cropName}</Text>
+                <Text style={styles.variety}>{quantity}</Text>
 
-              {/* Small actions row — same visual style, minimal change */}
-              <View style={{ flexDirection: "row", justifyContent: "flex-end", marginTop: 8 }}>
-                <TouchableOpacity
-                  onPress={() => handleViewCommunityFor(item)}
-                  style={{
-                    paddingHorizontal: 10,
-                    paddingVertical: 6,
-                    borderRadius: 8,
-                    borderWidth: 1,
-                    borderColor: "#D1D5DB",
-                    backgroundColor: "#fff",
-                  }}
-                >
-                  <Text style={{ color: "#374151", fontSize: 13 }}>View Community</Text>
+                <View style={styles.footer}>
+                  <View style={styles.footerRow}>
+                    <MaterialCommunityIcons name="map-marker" size={14} color="#757575" />
+                    <Text style={styles.footerText}>{marketName}</Text>
+                  </View>
+                  <View style={styles.footerRow}>
+                    <MaterialCommunityIcons name="clock-outline" size={14} color="#757575" />
+                    <Text style={styles.footerText}>{time}</Text>
+                  </View>
+                </View>
+
+                <TouchableOpacity onPress={() => setViewEntry(entry)} style={styles.viewButton}>
+                  <Text style={styles.viewButtonText}>View</Text>
                 </TouchableOpacity>
               </View>
-            </View>
-          ))
+            );
+          })
         )}
       </ScrollView>
 
-      {/* Floating Add Button */}
+      {/* Floating Add button */}
       <TouchableOpacity style={styles.fab} onPress={() => router.push("/auth/farmer/add-crop")}>
         <MaterialCommunityIcons name="plus" size={28} color="#fff" />
       </TouchableOpacity>
-    </View>
+
+      {/* View modal */}
+      <Modal visible={!!viewEntry} transparent animationType="slide">
+        <View style={styles.modalBackground}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>
+              {viewEntry ? (viewEntry.crop?.name || viewEntry.cropName) : ""}
+            </Text>
+            <Text>Market: {viewEntry ? (viewEntry.market?.marketName || viewEntry.marketName) : ""}</Text>
+            <Text>Price: ₹{viewEntry ? (viewEntry.price ?? viewEntry.rate ?? 0) : ""}</Text>
+            <Text>Quantity: {viewEntry ? (viewEntry.quantity || "") : ""}</Text>
+
+            {viewEntry && (() => {
+              const cropId = viewEntry.crop?._id || viewEntry.crop?.id || viewEntry.cropId || viewEntry.crop;
+              const combined = [...communityEntries, ...marketStatsEntries];
+              const stats = computePriceStats(combined, String(cropId));
+              return (
+                <View style={{ marginTop: 8 }}>
+                  <Text style={{ fontWeight: "600" }}>Market summary (all farmers)</Text>
+                  <Text>Entries: {stats.count}</Text>
+                  <Text>Min: ₹{stats.min}</Text>
+                  <Text>Avg: ₹{stats.avg}</Text>
+                  <Text>Max: ₹{stats.max}</Text>
+                  <Text style={{ color: "#6B7280", marginTop: 6 }}>
+                    Unit: {viewEntry.crop?.displayUnit || "N/A"}
+                  </Text>
+                </View>
+              );
+            })()}
+
+            <TouchableOpacity onPress={() => setViewEntry(null)} style={[styles.submitButton, { marginTop: 12 }]}>
+              <Text style={styles.submitText}>Close</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+    </SafeAreaView>
   );
 }
 
+/* ---------- Styles ---------- */
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#F9FAFB", padding: 16 },
-  header: { flexDirection: "row", alignItems: "center", gap: 6 },
-  headerTitle: { fontSize: 18, fontWeight: "700", color: "#2E7D32" },
-  toggleContainer: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginTop: 16,
-  },
+
+  toggleContainer: { flexDirection: "row", justifyContent: "space-between", marginTop: 12 },
   toggleButton: {
     flex: 1,
     borderWidth: 1,
@@ -317,13 +524,38 @@ const styles = StyleSheet.create({
     marginHorizontal: 4,
     alignItems: "center",
   },
-  toggleActive: {
-    backgroundColor: "#2E7D32",
-    borderColor: "#2E7D32",
-  },
+  toggleActive: { backgroundColor: "#2E7D32", borderColor: "#2E7D32" },
   toggleText: { fontSize: 13, fontWeight: "500", color: "#374151" },
   toggleTextActive: { color: "#fff" },
-  scrollContainer: { flex: 1, marginTop: 12 },
+
+  scrollContainer: { marginTop: 12 },
+
+  input: { borderWidth: 1, borderColor: "#D1D5DB", padding: 10, borderRadius: 8 },
+
+  smallFilter: {
+    flex: 1,
+    paddingVertical: 8,
+    marginHorizontal: 6,
+    borderRadius: 8,
+    backgroundColor: "#E5E7EB",
+    alignItems: "center",
+  },
+  smallFilterActive: { backgroundColor: "#2E7D32" },
+  smallFilterText: { color: "#374151" },
+  smallFilterTextActive: { color: "#fff" },
+
+  pill: {
+    padding: 10,
+    borderRadius: 8,
+    backgroundColor: "#fff",
+    marginRight: 8,
+    borderWidth: 1,
+    borderColor: "#D1D5DB",
+  },
+  pillActive: { borderColor: "#2E7D32", borderWidth: 2 },
+  pillText: { color: "#374151" },
+  pillTextActive: { color: "#2E7D32", fontWeight: "700" },
+
   card: {
     backgroundColor: "#fff",
     padding: 12,
@@ -334,11 +566,7 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 2,
   },
-  cardHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
+  cardHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   category: {
     backgroundColor: "#E5E7EB",
     color: "#374151",
@@ -350,13 +578,22 @@ const styles = StyleSheet.create({
   price: { fontWeight: "700", fontSize: 16, color: "#2E7D32" },
   cropName: { fontSize: 15, fontWeight: "600", marginTop: 4, color: "#111827" },
   variety: { fontSize: 13, color: "#6B7280" },
-  footer: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginTop: 10,
-  },
-  footerRow: { flexDirection: "row", alignItems: "center", gap: 4 },
+  footer: { flexDirection: "row", justifyContent: "space-between", marginTop: 10 },
+  footerRow: { flexDirection: "row", alignItems: "center", gap: 6 },
   footerText: { fontSize: 12, color: "#6B7280" },
+
+  viewButton: {
+    marginTop: 8,
+    alignSelf: "flex-end",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#D1D5DB",
+    backgroundColor: "#fff",
+  },
+  viewButtonText: { color: "#374151", fontSize: 13 },
+
   fab: {
     position: "absolute",
     bottom: 24,
@@ -369,5 +606,48 @@ const styles = StyleSheet.create({
     alignItems: "center",
     elevation: 6,
   },
+
+  /* Header */
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 4,
+    marginBottom: 4,
+    borderBottomWidth: 1,
+    borderColor: "#E5E7EB",
+    paddingBottom: 10,
+  },
+  backButton: {
+    padding: 8,
+    borderRadius: 8,
+    backgroundColor: "#E8F5E9",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  headerCenter: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+  },
+  headerTitle: {
+    fontSize: 24,
+    fontWeight: "700",
+    color: "#2E7D32",
+    letterSpacing: 0.5,
+  },
+
   emptyText: { textAlign: "center", marginTop: 50, color: "#6B7280" },
+
+  modalBackground: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  modalCard: { width: "92%", backgroundColor: "#fff", padding: 20, borderRadius: 12 },
+  modalTitle: { fontSize: 18, fontWeight: "bold", marginBottom: 12 },
+  submitButton: { backgroundColor: "#2E7D32", padding: 12, borderRadius: 10, alignItems: "center" },
+  submitText: { color: "#fff", fontWeight: "bold" },
 });
