@@ -13,6 +13,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 const BASE_URL = "https://mandiconnect.onrender.com";
 
@@ -22,6 +23,7 @@ const Marketplace = () => {
   const [refreshing, setRefreshing] = useState(false);
 
   const router = useRouter();
+  const insets = useSafeAreaInsets();
 
   useEffect(() => {
     const fetchData = async () => {
@@ -54,7 +56,6 @@ const Marketplace = () => {
 
   const renderItem = ({ item }: any) => (
     <View style={styles.card}>
-      {/* Left Image */}
       <Image
         source={{
           uri:
@@ -65,20 +66,25 @@ const Marketplace = () => {
         style={styles.image}
       />
 
-      {/* Right Content */}
       <View style={styles.info}>
         <Text style={styles.cropName}>{item.crop?.name || "Unknown Crop"}</Text>
         <Text style={styles.price}>₹ {item.price} / {item.unit}</Text>
 
         <View style={{ marginTop: 4 }}>
           <Text style={styles.detail}>Qty: {item.quantity} {item.unit}</Text>
-          <Text style={styles.detail}>📍 {item.location?.city}, {item.location?.state}</Text>
-          <Text style={[styles.status, { color: item.status === "active" ? "#2E7D32" : "#FF0000" }]}>
+          <Text style={styles.detail}>
+            📍 {item.location?.city}, {item.location?.state}
+          </Text>
+          <Text
+            style={[
+              styles.status,
+              { color: item.status === "active" ? "#2E7D32" : "#FF0000" },
+            ]}
+          >
             ● {item.status}
           </Text>
         </View>
 
-        {/* Premium View Button */}
         <TouchableOpacity
           style={styles.viewBtn}
           onPress={() =>
@@ -105,32 +111,31 @@ const Marketplace = () => {
   }
 
   return (
-    <View style={styles.container}>
-
-      {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+    <View style={[styles.container, { paddingTop: insets.top }]}>
+      
+      {/* ---------------- NEW HEADER (same style as Farmer Hub) ---------------- */}
+      <View style={styles.newHeader}>
+        <TouchableOpacity onPress={() => router.back()} style={styles.newBackBtn}>
           <MaterialCommunityIcons name="arrow-left" size={26} color="#2E7D32" />
         </TouchableOpacity>
 
-        <View style={styles.headerCenter}>
-          <MaterialCommunityIcons name="storefront" size={30} color="#2E7D32" />
-          <Text style={styles.headerTitle}>Farmer Marketplace</Text>
-        </View>
+        <MaterialCommunityIcons name="leaf" size={28} color="#2E7D32" />
 
-        <View style={{ width: 40 }} />
+        <Text style={styles.newHeaderTitle}>Farmer’s Marketplace</Text>
+
+        <View style={{ width: 30 }} /> 
       </View>
+      {/* ----------------------------------------------------------------------- */}
 
       <FlatList
         data={listings}
-        keyExtractor={(item) => item._id?.toString() || item.id?.toString()}
+        keyExtractor={(item, index) => String(item._id || item.id || index)}
         renderItem={renderItem}
         contentContainerStyle={{ paddingBottom: 100 }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
         ListEmptyComponent={<Text style={styles.emptyText}>No listings found yet.</Text>}
       />
 
-      {/* Floating Add Button */}
       <TouchableOpacity
         style={styles.addButton}
         onPress={() => router.push("/auth/farmer/add-market")}
@@ -144,31 +149,31 @@ const Marketplace = () => {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#F9FAFB", padding: 10 },
 
-  header: {
+  /* ---------------- NEW HEADER STYLES ---------------- */
+  newHeader: {
+    width: "100%",
+    paddingVertical: 14,
+    backgroundColor: "#fff",
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 4,
-    marginBottom: 8,
-    borderBottomWidth: 1,
-    borderColor: "#E5E7EB",
-    paddingBottom: 8,
+    paddingHorizontal: 10,
+    elevation: 4,
+    shadowColor: "#000",
+    shadowOpacity: 0.08,
+    shadowOffset: { width: 0, height: 2 },
+    marginBottom: 10,
   },
-  backButton: {
-    padding: 6,
-    backgroundColor: "#E8F5E9",
-    borderRadius: 8,
+  newBackBtn: {
+    padding: 5,
+    marginRight: 8,
   },
-  headerCenter: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  headerTitle: {
-    fontSize: 22,
+  newHeaderTitle: {
+    fontSize: 20,
     fontWeight: "700",
     color: "#2E7D32",
+    marginLeft: 8,
   },
+  /* --------------------------------------------------- */
 
   loaderContainer: { flex: 1, justifyContent: "center", alignItems: "center" },
 
@@ -205,7 +210,6 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
-    backgroundColor: "#fff",
   },
   viewBtnText: {
     color: "#2E7D32",

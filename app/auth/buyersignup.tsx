@@ -14,6 +14,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context"; // ⭐ ADDED
 
 // Cross-platform alert
 const showAlert = (title: string, message: string) => {
@@ -37,7 +38,9 @@ type BuyerForm = {
 };
 
 export default function BuyerSignUp() {
+  const insets = useSafeAreaInsets(); // ⭐ SAFE AREA HERE
   const router = useRouter();
+
   const [form, setForm] = useState<BuyerForm>({
     name: "",
     email: "",
@@ -57,7 +60,6 @@ export default function BuyerSignUp() {
     setForm({ ...form, [key]: value });
 
   const handleSignUp = async () => {
-    // Validation
     if (
       !form.name ||
       !form.email ||
@@ -84,7 +86,6 @@ export default function BuyerSignUp() {
 
     setLoading(true);
     try {
-      // Payload matching backend JSON
       const payload = {
         Name: form.name,
         Mobile: form.mobile,
@@ -114,7 +115,6 @@ export default function BuyerSignUp() {
         "⚠️ Registration failed",
         error.response?.data?.message || "Something went wrong"
       );
-      console.error("BuyerSignUp error:", error);
     } finally {
       setLoading(false);
     }
@@ -138,7 +138,12 @@ export default function BuyerSignUp() {
   ];
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView
+      style={[
+        styles.container,
+        { paddingTop: insets.top + 10 } // ⭐ FIXED SAFE AREA
+      ]}
+    >
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === "ios" ? "padding" : "height"}
@@ -186,12 +191,10 @@ export default function BuyerSignUp() {
                         ? "none"
                         : "sentences"
                     }
-                    autoFocus={item.key === "name"} // Only name gets auto focus
                   />
+
                   {item.key === "password" && (
-                    <TouchableOpacity
-                      onPress={() => setShowPassword(!showPassword)}
-                    >
+                    <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
                       <MaterialCommunityIcons
                         name={showPassword ? "eye-outline" : "eye-off-outline"}
                         size={20}
@@ -203,11 +206,7 @@ export default function BuyerSignUp() {
               </View>
             ))}
 
-            <TouchableOpacity
-              onPress={handleSignUp}
-              disabled={loading}
-              style={styles.button}
-            >
+            <TouchableOpacity onPress={handleSignUp} disabled={loading} style={styles.button}>
               <Text style={styles.buttonText}>
                 {loading ? "Signing Up..." : "Sign Up"}
               </Text>
@@ -228,12 +227,14 @@ export default function BuyerSignUp() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#f3f4f6" },
+
   scrollContent: {
     flexGrow: 1,
     justifyContent: "center",
     alignItems: "center",
     padding: 20,
   },
+
   card: {
     width: "90%",
     maxWidth: 400,
@@ -246,6 +247,7 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 5,
   },
+
   headerTitle: {
     fontSize: 28,
     fontWeight: "bold",
@@ -253,6 +255,7 @@ const styles = StyleSheet.create({
     textAlign: "center",
     marginBottom: 8,
   },
+
   subTitle: {
     fontSize: 20,
     fontWeight: "600",
@@ -260,18 +263,21 @@ const styles = StyleSheet.create({
     textAlign: "center",
     marginBottom: 4,
   },
+
   description: {
     fontSize: 14,
     color: "#4b5563",
     textAlign: "center",
     marginBottom: 16,
   },
+
   label: {
     fontSize: 14,
     fontWeight: "600",
     color: "#374151",
     marginBottom: 4,
   },
+
   inputContainer: {
     flexDirection: "row",
     alignItems: "center",
@@ -281,6 +287,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     paddingHorizontal: 12,
   },
+
   input: {
     flex: 1,
     paddingVertical: 12,
@@ -288,6 +295,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: "#1f2937",
   },
+
   button: {
     backgroundColor: "#2E7D32",
     paddingVertical: 14,
@@ -295,11 +303,14 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginTop: 4,
   },
+
   buttonText: { color: "#fff", fontWeight: "600", fontSize: 16 },
+
   loginContainer: {
     flexDirection: "row",
     justifyContent: "center",
     marginTop: 12,
   },
+
   loginText: { color: "#2E7D32", fontWeight: "600", marginLeft: 4 },
 });

@@ -15,6 +15,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 const showAlert = (title: string, message: string) => {
   if (Platform.OS === "web") {
@@ -25,7 +26,9 @@ const showAlert = (title: string, message: string) => {
 };
 
 export default function BuyerLogin() {
+  const insets = useSafeAreaInsets(); // ⭐ safe-area fix
   const router = useRouter();
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -42,14 +45,14 @@ export default function BuyerLogin() {
       const res = await axios.post(
         "https://mandiconnect.onrender.com/buyer/login",
         {
-          Email: email,      // ✅ Capitalized keys to match backend
-          Password: password // ✅ Capitalized keys to match backend
+          Email: email,
+          Password: password,
         },
         { headers: { "Content-Type": "application/json" } }
       );
 
       showAlert("✅ Success", res.data.message || "Login successful!");
-      router.replace("/auth/buyer/buyerdashboard"); // redirect to dashboard after login
+      router.replace("/auth/buyer/buyerdashboard");
     } catch (error: any) {
       if (error.response?.status === 401) {
         showAlert("⚠️ Invalid Credentials", "Incorrect email or password.");
@@ -61,14 +64,18 @@ export default function BuyerLogin() {
           error.response?.data?.message || "Something went wrong."
         );
       }
-      console.error("BuyerLogin error:", error);
     } finally {
       setLoading(false);
     }
-  }; // ✅ properly closed handleLogin
+  };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView
+      style={[
+        styles.container,
+        { paddingTop: insets.top + 10 } // ⭐ safe-area applied here
+      ]}
+    >
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === "ios" ? "padding" : "height"}
@@ -81,7 +88,7 @@ export default function BuyerLogin() {
             <Text style={styles.headerTitle}>🌾 Mandi Connect</Text>
             <Text style={styles.subTitle}>Buyer Login</Text>
 
-            {/* Email Field */}
+            {/* Email */}
             <View style={{ marginBottom: 12, width: "100%" }}>
               <Text style={styles.label}>Email</Text>
               <View style={styles.inputContainer}>
@@ -101,7 +108,7 @@ export default function BuyerLogin() {
               </View>
             </View>
 
-            {/* Password Field */}
+            {/* Password */}
             <View style={{ marginBottom: 12, width: "100%" }}>
               <Text style={styles.label}>Password</Text>
               <View style={styles.inputContainer}>
@@ -118,9 +125,7 @@ export default function BuyerLogin() {
                   onChangeText={setPassword}
                   autoCapitalize="none"
                 />
-                <TouchableOpacity
-                  onPress={() => setShowPassword(!showPassword)}
-                >
+                <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
                   <MaterialCommunityIcons
                     name={showPassword ? "eye-outline" : "eye-off-outline"}
                     size={20}
@@ -130,14 +135,14 @@ export default function BuyerLogin() {
               </View>
             </View>
 
-            {/* Forgot Password */}
+            {/* Forgot */}
             <TouchableOpacity
               onPress={() => router.push("/auth/buyer-forgot-password")}
             >
               <Text style={styles.forgotText}>Forgot Password?</Text>
             </TouchableOpacity>
 
-            {/* Login Button */}
+            {/* Login */}
             <TouchableOpacity
               onPress={handleLogin}
               disabled={loading}
@@ -150,12 +155,10 @@ export default function BuyerLogin() {
               )}
             </TouchableOpacity>
 
-            {/* Signup Redirect */}
+            {/* Signup */}
             <View style={styles.signupContainer}>
               <Text style={{ color: "#4b5563" }}>Don't have an account? </Text>
-              <TouchableOpacity
-                onPress={() => router.push("/auth/buyersignup")}
-              >
+              <TouchableOpacity onPress={() => router.push("/auth/buyersignup")}>
                 <Text style={styles.signupText}>Sign Up</Text>
               </TouchableOpacity>
             </View>
@@ -168,12 +171,14 @@ export default function BuyerLogin() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#f3f4f6" },
+
   scrollContent: {
     flexGrow: 1,
     justifyContent: "center",
     alignItems: "center",
     padding: 20,
   },
+
   card: {
     width: "90%",
     maxWidth: 400,
@@ -186,6 +191,7 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 5,
   },
+
   headerTitle: {
     fontSize: 28,
     fontWeight: "bold",
@@ -193,6 +199,7 @@ const styles = StyleSheet.create({
     textAlign: "center",
     marginBottom: 8,
   },
+
   subTitle: {
     fontSize: 20,
     fontWeight: "600",
@@ -200,12 +207,14 @@ const styles = StyleSheet.create({
     textAlign: "center",
     marginBottom: 16,
   },
+
   label: {
     fontSize: 14,
     fontWeight: "600",
     color: "#374151",
     marginBottom: 4,
   },
+
   inputContainer: {
     flexDirection: "row",
     alignItems: "center",
@@ -215,6 +224,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     paddingHorizontal: 12,
   },
+
   input: {
     flex: 1,
     paddingVertical: 12,
@@ -222,12 +232,14 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: "#1f2937",
   },
+
   forgotText: {
     textAlign: "right",
     color: "#2563eb",
     marginBottom: 16,
     fontWeight: "500",
   },
+
   button: {
     backgroundColor: "#2E7D32",
     paddingVertical: 14,
@@ -235,11 +247,14 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginTop: 4,
   },
+
   buttonText: { color: "#fff", fontWeight: "600", fontSize: 16 },
+
   signupContainer: {
     flexDirection: "row",
     justifyContent: "center",
     marginTop: 16,
   },
+
   signupText: { color: "#2E7D32", fontWeight: "600", marginLeft: 4 },
 });

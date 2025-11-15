@@ -17,6 +17,7 @@ import {
   TouchableOpacity,
   View
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context"; // ⭐ ADDED
 
 interface Crop {
   id: string;
@@ -44,6 +45,7 @@ const showAlert = (title: string, message: string) => {
 
 export default function AddFarmerEntry() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();   // ⭐ ADDED
 
   const [crops, setCrops] = useState<Crop[]>([]);
   const [markets, setMarkets] = useState<Market[]>([]);
@@ -54,7 +56,6 @@ export default function AddFarmerEntry() {
   const [photo, setPhoto] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  // Modals
   const [showCropModal, setShowCropModal] = useState(false);
   const [newCropName, setNewCropName] = useState("");
   const [newCropType, setNewCropType] = useState("");
@@ -97,7 +98,9 @@ export default function AddFarmerEntry() {
   };
 
   const handleAddCrop = async () => {
-    if (!newCropName || !newCropType) return showAlert("⚠️ Missing", "Enter crop name and type");
+    if (!newCropName || !newCropType)
+      return showAlert("⚠️ Missing", "Enter crop name and type");
+
     try {
       const token = await AsyncStorage.getItem("token");
       const res = await axios.post(
@@ -105,19 +108,20 @@ export default function AddFarmerEntry() {
         { name: newCropName, type: newCropType },
         { headers: { Authorization: `Bearer ${token}` } }
       );
+
       setCrops([...crops, res.data]);
       setSelectedCrop(res.data);
       setShowCropModal(false);
       setNewCropName("");
       setNewCropType("");
-    } catch (err) {
-      console.error(err);
+    } catch {
       showAlert("❌ Error", "Failed to add crop");
     }
   };
 
   const handleAddMarket = async () => {
     if (!newMarketName) return showAlert("⚠️ Missing", "Enter market name");
+
     try {
       const token = await AsyncStorage.getItem("token");
       const res = await axios.post(
@@ -125,12 +129,12 @@ export default function AddFarmerEntry() {
         { marketName: newMarketName },
         { headers: { Authorization: `Bearer ${token}` } }
       );
+
       setMarkets([...markets, res.data]);
       setSelectedMarket(res.data);
       setShowMarketModal(false);
       setNewMarketName("");
-    } catch (err) {
-      console.error(err);
+    } catch {
       showAlert("❌ Error", "Failed to add market");
     }
   };
@@ -162,13 +166,13 @@ export default function AddFarmerEntry() {
       });
 
       showAlert("✅ Success", "Farmer entry added!");
+
       setSelectedCrop(null);
       setSelectedMarket(null);
       setPrice("");
       setQuantity("");
       setPhoto(null);
     } catch (err: any) {
-      console.error(err);
       showAlert("❌ Error", err.response?.data || "Failed to add entry");
     } finally {
       setLoading(false);
@@ -176,10 +180,16 @@ export default function AddFarmerEntry() {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView
+      style={[
+        styles.container,
+        {
+          paddingTop: insets.top,         // ⭐ SAFE AREA TOP
+          paddingBottom: insets.bottom,   // ⭐ SAFE AREA BOTTOM
+        },
+      ]}
+    >
       <ScrollView contentContainerStyle={{ padding: 20 }}>
-        
-        {/* Title Row with Back Arrow */}
         <View style={styles.titleRow}>
           <TouchableOpacity
             onPress={() => router.replace("/auth/farmer/farmer-dashboard")}
@@ -187,11 +197,12 @@ export default function AddFarmerEntry() {
           >
             <MaterialCommunityIcons name="arrow-left" size={28} color="#2E7D32" />
           </TouchableOpacity>
+
           <Text style={styles.title}>Add Farmer Entry</Text>
         </View>
 
-        {/* Crop Selection */}
         <Text style={styles.label}>Crop Name:</Text>
+
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
           {crops.map((crop) => (
             <TouchableOpacity
@@ -204,12 +215,13 @@ export default function AddFarmerEntry() {
             </TouchableOpacity>
           ))}
         </ScrollView>
+
         <TouchableOpacity onPress={() => setShowCropModal(true)} style={styles.addButton}>
           <Text style={styles.addText}>+ Add Crop</Text>
         </TouchableOpacity>
 
-        {/* Market Selection */}
         <Text style={styles.label}>Market Name:</Text>
+
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
           {markets.map((market) => (
             <TouchableOpacity
@@ -217,35 +229,44 @@ export default function AddFarmerEntry() {
               onPress={() => setSelectedMarket(market)}
               style={[styles.item, selectedMarket?.id === market.id && styles.itemSelected]}
             >
-              {market.imageUrl && <Image source={{ uri: market.imageUrl }} style={styles.itemImage} />}
+              {market.imageUrl && (
+                <Image source={{ uri: market.imageUrl }} style={styles.itemImage} />
+              )}
               <Text>{market.marketName}</Text>
             </TouchableOpacity>
           ))}
         </ScrollView>
+
         <TouchableOpacity onPress={() => setShowMarketModal(true)} style={styles.addButton}>
           <Text style={styles.addText}>+ Add Market</Text>
         </TouchableOpacity>
 
-        {/* Price & Quantity */}
         <Text style={styles.label}>Price</Text>
-        <TextInput value={price} onChangeText={setPrice} placeholder="Enter price" keyboardType="numeric" style={styles.input} />
-        <Text style={styles.label}>Quantity</Text>
-        <TextInput value={quantity} onChangeText={setQuantity} placeholder="Enter quantity (e.g., 15 kg)" style={styles.input} />
+        <TextInput
+          value={price}
+          onChangeText={setPrice}
+          placeholder="Enter price"
+          keyboardType="numeric"
+          style={styles.input}
+        />
 
-        {/* Photo */}
+        <Text style={styles.label}>Quantity</Text>
+        <TextInput
+          value={quantity}
+          onChangeText={setQuantity}
+          placeholder="Enter quantity (e.g., 15 kg)"
+          style={styles.input}
+        />
+
         <TouchableOpacity onPress={pickImage} style={styles.photoButton}>
           <Text>{photo ? "Change Photo" : "Upload Photo (optional)"}</Text>
         </TouchableOpacity>
+
         {photo && <Image source={{ uri: photo }} style={styles.photo} />}
 
-        {/* Submit */}
         <TouchableOpacity onPress={handleSubmit} disabled={loading} style={styles.submitButton}>
           {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.submitText}>Add Entry</Text>}
         </TouchableOpacity>
-
-        {/* Crop & Market Modals */}
-        {/* ... modals code remains same ... */}
-
       </ScrollView>
     </SafeAreaView>
   );
@@ -254,7 +275,7 @@ export default function AddFarmerEntry() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#f3f4f6" },
   titleRow: { flexDirection: "row", alignItems: "center", marginBottom: 20 },
-  backButton: { padding: 6 }, // increases touchable area
+  backButton: { padding: 6 },
   title: { fontSize: 24, fontWeight: "bold", marginLeft: 10 },
   label: { fontSize: 16, fontWeight: "600", marginBottom: 6 },
   input: { borderWidth: 1, borderColor: "#D1D5DB", padding: 12, borderRadius: 8, marginBottom: 12 },
@@ -262,12 +283,17 @@ const styles = StyleSheet.create({
   photo: { width: "100%", height: 200, marginBottom: 12, borderRadius: 8 },
   submitButton: { backgroundColor: "#2E7D32", padding: 15, borderRadius: 10, alignItems: "center", marginTop: 10 },
   submitText: { color: "#fff", fontWeight: "bold" },
-  item: { padding: 10, borderRadius: 8, marginRight: 10, borderWidth: 1, borderColor: "#D1D5DB", backgroundColor: "#fff", alignItems: "center", justifyContent: "center" },
+  item: {
+    padding: 10,
+    borderRadius: 8,
+    marginRight: 10,
+    borderWidth: 1,
+    borderColor: "#D1D5DB",
+    backgroundColor: "#fff",
+    alignItems: "center",
+  },
   itemSelected: { borderColor: "#2E7D32", borderWidth: 2 },
   addButton: { backgroundColor: "#E5E7EB", padding: 10, borderRadius: 8, alignItems: "center", marginBottom: 12 },
   addText: { color: "#2E7D32", fontWeight: "600" },
   itemImage: { width: 40, height: 40, marginBottom: 4, borderRadius: 20 },
-  modalBackground: { flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "center", alignItems: "center" },
-  modalCard: { width: "85%", backgroundColor: "#fff", padding: 20, borderRadius: 12 },
-  modalTitle: { fontSize: 18, fontWeight: "bold", marginBottom: 12 },
 });

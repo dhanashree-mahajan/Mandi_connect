@@ -3,14 +3,26 @@
     "name": "my-app",
     "slug": "my-app",
     "version": "1.0.0",
+    "scheme": "mandiconnect",
     "orientation": "portrait",
-    "platforms": ["ios", "android", "web"],
-    "bundler": "metro",   // ✅ Force Expo to use Metro bundler
+    "platforms": [
+      "ios",
+      "android",
+      "web"
+    ],
     "updates": {
       "enabled": true
     },
     "assetBundlePatterns": [
       "**/*"
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "1cc7ff86-1478-42f9-bbdf-e6f6037941c4"
+      }
+    },
+    "android": {
+      "package": "com.dhanashrii123.myapp"
+    }
   }
 }

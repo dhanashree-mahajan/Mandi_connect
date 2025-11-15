@@ -10,25 +10,40 @@ import {
   View,
   useWindowDimensions,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 export default function Index() {
   const router = useRouter();
-  const { width } = useWindowDimensions(); // 👈 get screen width
-
-  const isLargeScreen = width > 768; // 👈 Tablet/Laptop breakpoint
+  const { width } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+  const isLargeScreen = width > 768;
 
   return (
-    <SafeAreaView style={{ flex: 1 }}>
-      <StatusBar translucent backgroundColor="transparent" barStyle="dark-content" />
+    <SafeAreaView
+      style={{
+        flex: 1,
+        backgroundColor: "#fff",
+        paddingTop: insets.top,        // ⭐ top safe area
+        paddingBottom: insets.bottom,  // ⭐ bottom safe area
+      }}
+    >
+      <StatusBar backgroundColor="#fff" barStyle="dark-content" />
+
       <ImageBackground
         source={require("../assets/images/background.jpg")}
         style={{ flex: 1, width: "100%", height: "100%" }}
         resizeMode="cover"
       >
-        <ScrollView contentContainerStyle={{ flexGrow: 1, padding: 20 }}>
-          {/* Header */}
-          <View style={{ alignItems: "center", marginTop: 40, marginBottom: 20 }}>
-            <Text style={{ fontSize: 24, fontWeight: "bold", color: "#2E7D32" }}>🌾 Mandi Connect</Text>
+        <ScrollView
+          contentContainerStyle={{
+            flexGrow: 1,
+            padding: 20,
+          }}
+        >
+          <View style={{ alignItems: "center", marginBottom: 20 }}>
+            <Text style={{ fontSize: 24, fontWeight: "bold", color: "#2E7D32" }}>
+              🌾 Mandi Connect
+            </Text>
             <Text
               style={{
                 fontSize: 14,
@@ -42,20 +57,18 @@ export default function Index() {
             </Text>
           </View>
 
-          {/* Buyer & Farmer Section */}
           <View
             style={{
-              flexDirection: isLargeScreen ? "row" : "column", // 👈 responsive direction
+              flexDirection: isLargeScreen ? "row" : "column",
               justifyContent: isLargeScreen ? "space-evenly" : "center",
               alignItems: "center",
               flexWrap: "wrap",
               marginBottom: 20,
             }}
           >
-            {/* Buyer Card */}
             <View
               style={{
-                width: isLargeScreen ? "40%" : "90%", // 👈 responsive width
+                width: isLargeScreen ? "40%" : "90%",
                 backgroundColor: "rgba(255,255,255,0.95)",
                 margin: 10,
                 padding: 20,
@@ -69,7 +82,14 @@ export default function Index() {
               }}
             >
               <MaterialCommunityIcons name="account-outline" size={40} color="#2E7D32" />
-              <Text style={{ fontSize: 18, fontWeight: "bold", color: "#2E7D32", marginVertical: 10 }}>
+              <Text
+                style={{
+                  fontSize: 18,
+                  fontWeight: "bold",
+                  color: "#2E7D32",
+                  marginVertical: 10,
+                }}
+              >
                 Buyers
               </Text>
               <TouchableOpacity
@@ -86,7 +106,6 @@ export default function Index() {
               </TouchableOpacity>
             </View>
 
-            {/* Farmer Card */}
             <View
               style={{
                 width: isLargeScreen ? "40%" : "90%",
@@ -103,7 +122,14 @@ export default function Index() {
               }}
             >
               <MaterialCommunityIcons name="sprout-outline" size={40} color="#388E3C" />
-              <Text style={{ fontSize: 18, fontWeight: "bold", color: "#388E3C", marginVertical: 10 }}>
+              <Text
+                style={{
+                  fontSize: 18,
+                  fontWeight: "bold",
+                  color: "#388E3C",
+                  marginVertical: 10,
+                }}
+              >
                 Farmers
               </Text>
               <TouchableOpacity
