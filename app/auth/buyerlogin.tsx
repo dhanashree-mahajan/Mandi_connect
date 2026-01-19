@@ -1,4 +1,5 @@
 import { MaterialCommunityIcons } from "@expo/vector-icons";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import axios from "axios";
 import { useRouter } from "expo-router";
 import { useState } from "react";
@@ -26,7 +27,7 @@ const showAlert = (title: string, message: string) => {
 };
 
 export default function BuyerLogin() {
-  const insets = useSafeAreaInsets(); // ⭐ safe-area fix
+  const insets = useSafeAreaInsets();
   const router = useRouter();
 
   const [email, setEmail] = useState("");
@@ -51,13 +52,27 @@ export default function BuyerLogin() {
         { headers: { "Content-Type": "application/json" } }
       );
 
+      // Save JWT Token
+      if (res.data.token) {
+        await AsyncStorage.setItem("token", res.data.token);
+      }
+
+      // Save BuyerId
+      const buyerId = res.data.buyer?._id || res.data.buyer?.id;
+      if (buyerId) {
+        await AsyncStorage.setItem("buyerId", buyerId);
+      }
+
       showAlert("✅ Success", res.data.message || "Login successful!");
       router.replace("/auth/buyer/buyerdashboard");
     } catch (error: any) {
       if (error.response?.status === 401) {
         showAlert("⚠️ Invalid Credentials", "Incorrect email or password.");
       } else if (error.response?.status === 404) {
-        showAlert("⚠️ Account not found", "Please check your email or sign up first.");
+        showAlert(
+          "⚠️ Account not found",
+          "Please check your email or sign up first."
+        );
       } else {
         showAlert(
           "⚠️ Login Failed",
@@ -73,7 +88,7 @@ export default function BuyerLogin() {
     <SafeAreaView
       style={[
         styles.container,
-        { paddingTop: insets.top + 10 } // ⭐ safe-area applied here
+        { paddingTop: insets.top + 10 }
       ]}
     >
       <KeyboardAvoidingView
@@ -180,7 +195,7 @@ const styles = StyleSheet.create({
   },
 
   card: {
-    width: "90%",
+    width: "100%",
     maxWidth: 400,
     backgroundColor: "#fff",
     borderRadius: 16,

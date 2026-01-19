@@ -5,6 +5,9 @@
     "version": "1.0.0",
     "scheme": "mandiconnect",
     "orientation": "portrait",
+
+    "userInterfaceStyle": "automatic",
+
     "platforms": [
       "ios",
       "android",

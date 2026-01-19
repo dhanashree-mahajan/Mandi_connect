@@ -2,9 +2,15 @@ import { MaterialCommunityIcons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Tabs, useRouter } from "expo-router";
 import { useEffect } from "react";
+import { Platform } from "react-native";
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
 
 export default function BuyerLayout() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
 
   useEffect(() => {
     const checkAuth = async () => {
@@ -16,76 +22,84 @@ export default function BuyerLayout() {
     checkAuth();
   }, []);
 
+  const TAB_BAR_HEIGHT = Platform.OS === "ios" ? 56 + insets.bottom : 60;
+
   return (
-    <Tabs
-      screenOptions={{
-        headerShown: false,
-        tabBarActiveTintColor: "#2E7D32",
-        tabBarInactiveTintColor: "#9CA3AF",
-        tabBarStyle: { backgroundColor: "#fff", height: 60 },
-        tabBarLabelStyle: { fontSize: 12, fontWeight: "600", marginBottom: 6 },
-      }}
-    >
-
-      {/* 🏠 Home (Buyer Dashboard) */}
-      <Tabs.Screen
-        name="buyer-dashboard"
-        options={{
-          title: "Home",
-          tabBarIcon: ({ color, focused, size }) => (
-            <MaterialCommunityIcons
-              name={focused ? "home" : "home-outline"}
-              size={size}
-              color={color}
-            />
-          ),
+    <SafeAreaView style={{ flex: 1 }} edges={["bottom"]}>
+      <Tabs
+        screenOptions={{
+          headerShown: false,
+          tabBarActiveTintColor: "#2E7D32",
+          tabBarInactiveTintColor: "#9CA3AF",
+          tabBarStyle: {
+            backgroundColor: "#fff",
+            height: TAB_BAR_HEIGHT,
+            paddingBottom: insets.bottom > 0 ? insets.bottom : 6,
+          },
+          tabBarLabelStyle: {
+            fontSize: 12,
+            fontWeight: "600",
+          },
         }}
-      />
+      >
+        <Tabs.Screen
+          name="buyerdashboard"
+          options={{
+            title: "Home",
+            tabBarIcon: ({ color, size, focused }) => (
+              <MaterialCommunityIcons
+                name={focused ? "home" : "home-outline"}
+                size={size}
+                color={color}
+              />
+            ),
+          }}
+        />
 
-      {/* 🛒 Marketplace */}
-      <Tabs.Screen
-        name="marketplace"
-        options={{
-          title: "Marketplace",
-          tabBarIcon: ({ color, focused, size }) => (
-            <MaterialCommunityIcons
-              name={focused ? "store" : "store-outline"}
-              size={size}
-              color={color}
-            />
-          ),
-        }}
-      />
+        <Tabs.Screen
+          name="marketplace"
+          options={{
+            title: "Marketplace",
+            tabBarIcon: ({ color, size, focused }) => (
+              <MaterialCommunityIcons
+                name={focused ? "store" : "store-outline"}
+                size={size}
+                color={color}
+              />
+            ),
+          }}
+        />
 
-      {/* 🔔 Notifications */}
-      <Tabs.Screen
-        name="notifications"
-        options={{
-          title: "Notifications",
-          tabBarIcon: ({ color, focused, size }) => (
-            <MaterialCommunityIcons
-              name={focused ? "bell" : "bell-outline"}
-              size={size}
-              color={color}
-            />
-          ),
-        }}
-      />
+        <Tabs.Screen
+          name="notifications"
+          options={{
+            title: "Notifications",
+            tabBarIcon: ({ color, size, focused }) => (
+              <MaterialCommunityIcons
+                name={focused ? "bell" : "bell-outline"}
+                size={size}
+                color={color}
+              />
+            ),
+          }}
+        />
 
-      {/* 👤 Profile */}
-      <Tabs.Screen
-        name="buyer-profile"
-        options={{
-          title: "Profile",
-          tabBarIcon: ({ color, focused, size }) => (
-            <MaterialCommunityIcons
-              name={focused ? "account" : "account-outline"}
-              size={size}
-              color={color}
-            />
-          ),
-        }}
-      />
-    </Tabs>
+        <Tabs.Screen
+          name="profile"
+          options={{
+            title: "Profile",
+            tabBarIcon: ({ color, size, focused }) => (
+              <MaterialCommunityIcons
+                name={focused ? "account" : "account-outline"}
+                size={size}
+                color={color}
+              />
+            ),
+          }}
+        />
+
+        <Tabs.Screen name="addDemand" options={{ href: null }} />
+      </Tabs>
+    </SafeAreaView>
   );
 }

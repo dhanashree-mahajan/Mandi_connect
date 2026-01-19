@@ -227,8 +227,7 @@ export default function AddMarket() {
           </TouchableOpacity>
 
           <View style={styles.headerCenter}>
-            <MaterialCommunityIcons name="store-plus" size={28} color="#2E7D32" />
-            <Text style={styles.headerTitle}>Add to Marketplace</Text>
+            <Text style={styles.headerTitle}>🌾Add Market</Text>
           </View>
 
           <View style={{ width: 40 }} />

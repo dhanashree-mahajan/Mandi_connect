@@ -2,11 +2,12 @@ import { MaterialCommunityIcons } from "@expo/vector-icons";
 import type { BottomTabNavigationOptions } from "@react-navigation/bottom-tabs";
 import { Tabs } from "expo-router";
 
-type TabBarIconProps = NonNullable<
-  BottomTabNavigationOptions["tabBarIcon"]
-> extends (props: infer P) => any
-  ? P
-  : never;
+type TabBarIconProps =
+  NonNullable<BottomTabNavigationOptions["tabBarIcon"]> extends (
+    props: infer P,
+  ) => any
+    ? P
+    : never;
 
 export default function FarmerLayout() {
   return (
@@ -34,12 +35,12 @@ export default function FarmerLayout() {
         },
       }}
     >
-      {/* 🏠 Home (Farmer Dashboard) */}
+      {/* 🏠 Home */}
       <Tabs.Screen
         name="farmer-dashboard"
         options={{
           title: "Home",
-          tabBarIcon: ({ color, size, focused }: TabBarIconProps) => (
+          tabBarIcon: ({ color, focused }: TabBarIconProps) => (
             <MaterialCommunityIcons
               name={focused ? "home" : "home-outline"}
               color={color}
@@ -54,7 +55,7 @@ export default function FarmerLayout() {
         name="marketplace"
         options={{
           title: "Marketplace",
-          tabBarIcon: ({ color, size, focused }: TabBarIconProps) => (
+          tabBarIcon: ({ color, focused }: TabBarIconProps) => (
             <MaterialCommunityIcons
               name={focused ? "store" : "store-outline"}
               color={color}
@@ -69,7 +70,7 @@ export default function FarmerLayout() {
         name="notifications"
         options={{
           title: "Notifications",
-          tabBarIcon: ({ color, size, focused }: TabBarIconProps) => (
+          tabBarIcon: ({ color, focused }: TabBarIconProps) => (
             <MaterialCommunityIcons
               name={focused ? "bell" : "bell-outline"}
               color={color}
@@ -84,7 +85,7 @@ export default function FarmerLayout() {
         name="profile"
         options={{
           title: "Profile",
-          tabBarIcon: ({ color, size, focused }: TabBarIconProps) => (
+          tabBarIcon: ({ color, focused }: TabBarIconProps) => (
             <MaterialCommunityIcons
               name={focused ? "account" : "account-outline"}
               color={color}
@@ -94,7 +95,7 @@ export default function FarmerLayout() {
         }}
       />
 
-      {/* 🚫 Hidden routes (no icon) */}
+      {/* 🚫 Hidden routes */}
       <Tabs.Screen name="add-crop" options={{ href: null }} />
       <Tabs.Screen name="add-market" options={{ href: null }} />
     </Tabs>

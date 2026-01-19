@@ -15,15 +15,15 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  View
+  View,
 } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context"; // ⭐ ADDED
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 interface Crop {
   id: string;
   name: string;
   type: string;
-  displayUnit: string;
+  displayUnit?: string;
   imageUrl?: string;
 }
 
@@ -45,7 +45,7 @@ const showAlert = (title: string, message: string) => {
 
 export default function AddFarmerEntry() {
   const router = useRouter();
-  const insets = useSafeAreaInsets();   // ⭐ ADDED
+  const insets = useSafeAreaInsets();
 
   const [crops, setCrops] = useState<Crop[]>([]);
   const [markets, setMarkets] = useState<Market[]>([]);
@@ -59,6 +59,7 @@ export default function AddFarmerEntry() {
   const [showCropModal, setShowCropModal] = useState(false);
   const [newCropName, setNewCropName] = useState("");
   const [newCropType, setNewCropType] = useState("");
+
   const [showMarketModal, setShowMarketModal] = useState(false);
   const [newMarketName, setNewMarketName] = useState("");
 
@@ -73,15 +74,29 @@ export default function AddFarmerEntry() {
       if (!token) throw new Error("Not logged in");
 
       const [cropRes, marketRes] = await Promise.all([
-        axios.get(`${BASE_URL}/getAllCrop`, { headers: { Authorization: `Bearer ${token}` } }),
-        axios.get(`${BASE_URL}/getAllMarket`, { headers: { Authorization: `Bearer ${token}` } }),
+        axios.get(`${BASE_URL}/getAllCrop`, {
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+        axios.get(`${BASE_URL}/getAllMarket`, {
+          headers: { Authorization: `Bearer ${token}` },
+        }),
       ]);
 
-      setCrops(cropRes.data);
-      setMarkets(marketRes.data);
+      setCrops(
+        cropRes.data.map((c: any) => ({
+          ...c,
+          id: c.id || c._id,
+        })),
+      );
+
+      setMarkets(
+        marketRes.data.map((m: any) => ({
+          ...m,
+          id: m.id || m._id,
+        })),
+      );
     } catch (err: any) {
-      console.error(err);
-      showAlert("Error", err.message || "Failed to fetch crops/markets");
+      showAlert("Error", err.message || "Failed to load data");
     } finally {
       setLoading(false);
     }
@@ -94,54 +109,63 @@ export default function AddFarmerEntry() {
       allowsEditing: true,
     });
 
-    if (!result.canceled) setPhoto(result.assets[0].uri);
+    if (!result.canceled) {
+      setPhoto(result.assets[0].uri);
+    }
   };
 
   const handleAddCrop = async () => {
-    if (!newCropName || !newCropType)
-      return showAlert("⚠️ Missing", "Enter crop name and type");
+    if (!newCropName || !newCropType) {
+      return showAlert("Missing", "Enter crop name and type");
+    }
 
     try {
       const token = await AsyncStorage.getItem("token");
       const res = await axios.post(
         `${BASE_URL}/addCrop`,
         { name: newCropName, type: newCropType },
-        { headers: { Authorization: `Bearer ${token}` } }
+        { headers: { Authorization: `Bearer ${token}` } },
       );
 
-      setCrops([...crops, res.data]);
-      setSelectedCrop(res.data);
+      const crop = { ...res.data, id: res.data.id || res.data._id };
+      setCrops((prev) => [...prev, crop]);
+      setSelectedCrop(crop);
+
       setShowCropModal(false);
       setNewCropName("");
       setNewCropType("");
     } catch {
-      showAlert("❌ Error", "Failed to add crop");
+      showAlert("Error", "Failed to add crop");
     }
   };
 
   const handleAddMarket = async () => {
-    if (!newMarketName) return showAlert("⚠️ Missing", "Enter market name");
+    if (!newMarketName) {
+      return showAlert("Missing", "Enter market name");
+    }
 
     try {
       const token = await AsyncStorage.getItem("token");
       const res = await axios.post(
         `${BASE_URL}/addMarket`,
         { marketName: newMarketName },
-        { headers: { Authorization: `Bearer ${token}` } }
+        { headers: { Authorization: `Bearer ${token}` } },
       );
 
-      setMarkets([...markets, res.data]);
-      setSelectedMarket(res.data);
+      const market = { ...res.data, id: res.data.id || res.data._id };
+      setMarkets((prev) => [...prev, market]);
+      setSelectedMarket(market);
+
       setShowMarketModal(false);
       setNewMarketName("");
     } catch {
-      showAlert("❌ Error", "Failed to add market");
+      showAlert("Error", "Failed to add market");
     }
   };
 
   const handleSubmit = async () => {
     if (!selectedCrop || !selectedMarket || !price || !quantity) {
-      return showAlert("⚠️ Missing fields", "Select crop, market, price & quantity");
+      return showAlert("Missing", "Fill all required fields");
     }
 
     setLoading(true);
@@ -150,30 +174,29 @@ export default function AddFarmerEntry() {
       const userId = await AsyncStorage.getItem("userId");
       if (!token || !userId) throw new Error("Not logged in");
 
-      const payload = {
-        farmer: { id: userId },
-        crop: { id: selectedCrop.id },
-        market: { id: selectedMarket.id },
-        price: Number(price),
-        quantity,
-        photo: photo || "",
-        status: "active",
-        feedback: { agreeCount: 0, disagreeCount: 0, votedFarmers: [] },
-      };
+      await axios.post(
+        `${BASE_URL}/farmer-entries/add`,
+        {
+          farmer: { id: userId },
+          crop: { id: selectedCrop.id },
+          market: { id: selectedMarket.id },
+          price: Number(price),
+          quantity,
+          photo: photo || "",
+          status: "active",
+          feedback: { agreeCount: 0, disagreeCount: 0, votedFarmers: [] },
+        },
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
 
-      await axios.post(`${BASE_URL}/farmer-entries/add`, payload, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-
-      showAlert("✅ Success", "Farmer entry added!");
-
+      showAlert("Success", "Farmer entry added");
       setSelectedCrop(null);
       setSelectedMarket(null);
       setPrice("");
       setQuantity("");
       setPhoto(null);
     } catch (err: any) {
-      showAlert("❌ Error", err.response?.data || "Failed to add entry");
+      showAlert("Error", err.response?.data || "Failed to submit");
     } finally {
       setLoading(false);
     }
@@ -183,78 +206,81 @@ export default function AddFarmerEntry() {
     <SafeAreaView
       style={[
         styles.container,
-        {
-          paddingTop: insets.top,         // ⭐ SAFE AREA TOP
-          paddingBottom: insets.bottom,   // ⭐ SAFE AREA BOTTOM
-        },
+        { paddingTop: insets.top, paddingBottom: insets.bottom },
       ]}
     >
       <ScrollView contentContainerStyle={{ padding: 20 }}>
         <View style={styles.titleRow}>
           <TouchableOpacity
             onPress={() => router.replace("/auth/farmer/farmer-dashboard")}
-            style={styles.backButton}
           >
-            <MaterialCommunityIcons name="arrow-left" size={28} color="#2E7D32" />
+            <MaterialCommunityIcons
+              name="arrow-left"
+              size={28}
+              color="#2E7D32"
+            />
           </TouchableOpacity>
-
-          <Text style={styles.title}>Add Farmer Entry</Text>
+          <Text style={styles.title}>🌾Add Crop List</Text>
         </View>
 
-        <Text style={styles.label}>Crop Name:</Text>
-
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
+        <Text style={styles.label}>Crop</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
           {crops.map((crop) => (
             <TouchableOpacity
               key={crop.id}
               onPress={() => setSelectedCrop(crop)}
-              style={[styles.item, selectedCrop?.id === crop.id && styles.itemSelected]}
+              style={[
+                styles.item,
+                selectedCrop?.id === crop.id && styles.itemSelected,
+              ]}
             >
-              {crop.imageUrl && <Image source={{ uri: crop.imageUrl }} style={styles.itemImage} />}
               <Text>{crop.name}</Text>
             </TouchableOpacity>
           ))}
         </ScrollView>
 
-        <TouchableOpacity onPress={() => setShowCropModal(true)} style={styles.addButton}>
+        <TouchableOpacity
+          onPress={() => setShowCropModal(true)}
+          style={styles.addButton}
+        >
           <Text style={styles.addText}>+ Add Crop</Text>
         </TouchableOpacity>
 
-        <Text style={styles.label}>Market Name:</Text>
-
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
+        <Text style={styles.label}>Market</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
           {markets.map((market) => (
             <TouchableOpacity
               key={market.id}
               onPress={() => setSelectedMarket(market)}
-              style={[styles.item, selectedMarket?.id === market.id && styles.itemSelected]}
+              style={[
+                styles.item,
+                selectedMarket?.id === market.id && styles.itemSelected,
+              ]}
             >
-              {market.imageUrl && (
-                <Image source={{ uri: market.imageUrl }} style={styles.itemImage} />
-              )}
               <Text>{market.marketName}</Text>
             </TouchableOpacity>
           ))}
         </ScrollView>
 
-        <TouchableOpacity onPress={() => setShowMarketModal(true)} style={styles.addButton}>
+        <TouchableOpacity
+          onPress={() => setShowMarketModal(true)}
+          style={styles.addButton}
+        >
           <Text style={styles.addText}>+ Add Market</Text>
         </TouchableOpacity>
 
-        <Text style={styles.label}>Price</Text>
         <TextInput
+          placeholder="Price"
           value={price}
           onChangeText={setPrice}
-          placeholder="Enter price"
           keyboardType="numeric"
           style={styles.input}
         />
 
-        <Text style={styles.label}>Quantity</Text>
         <TextInput
+          placeholder="Quantity (e.g. 10 kg)"
           value={quantity}
           onChangeText={setQuantity}
-          placeholder="Enter quantity (e.g., 15 kg)"
           style={styles.input}
         />
 
@@ -264,25 +290,104 @@ export default function AddFarmerEntry() {
 
         {photo && <Image source={{ uri: photo }} style={styles.photo} />}
 
-        <TouchableOpacity onPress={handleSubmit} disabled={loading} style={styles.submitButton}>
-          {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.submitText}>Add Entry</Text>}
+        <TouchableOpacity onPress={handleSubmit} style={styles.submitButton}>
+          {loading ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <Text style={styles.submitText}>Add Entry</Text>
+          )}
         </TouchableOpacity>
       </ScrollView>
+
+      {/* Crop Modal */}
+      {showCropModal && (
+        <View style={styles.modalOverlay}>
+          <View style={styles.modal}>
+            <Text style={styles.modalTitle}>Add Crop</Text>
+            <TextInput
+              placeholder="Crop name"
+              value={newCropName}
+              onChangeText={setNewCropName}
+              style={styles.input}
+            />
+            <TextInput
+              placeholder="Crop type"
+              value={newCropType}
+              onChangeText={setNewCropType}
+              style={styles.input}
+            />
+            <TouchableOpacity
+              onPress={handleAddCrop}
+              style={styles.submitButton}
+            >
+              <Text style={styles.submitText}>Save</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => setShowCropModal(false)}>
+              <Text style={styles.cancel}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
+
+      {/* Market Modal */}
+      {showMarketModal && (
+        <View style={styles.modalOverlay}>
+          <View style={styles.modal}>
+            <Text style={styles.modalTitle}>Add Market</Text>
+            <TextInput
+              placeholder="Market name"
+              value={newMarketName}
+              onChangeText={setNewMarketName}
+              style={styles.input}
+            />
+            <TouchableOpacity
+              onPress={handleAddMarket}
+              style={styles.submitButton}
+            >
+              <Text style={styles.submitText}>Save</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => setShowMarketModal(false)}>
+              <Text style={styles.cancel}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#f3f4f6" },
-  titleRow: { flexDirection: "row", alignItems: "center", marginBottom: 20 },
-  backButton: { padding: 6 },
-  title: { fontSize: 24, fontWeight: "bold", marginLeft: 10 },
-  label: { fontSize: 16, fontWeight: "600", marginBottom: 6 },
-  input: { borderWidth: 1, borderColor: "#D1D5DB", padding: 12, borderRadius: 8, marginBottom: 12 },
-  photoButton: { backgroundColor: "#E5E7EB", padding: 12, borderRadius: 8, alignItems: "center", marginBottom: 12 },
-  photo: { width: "100%", height: 200, marginBottom: 12, borderRadius: 8 },
-  submitButton: { backgroundColor: "#2E7D32", padding: 15, borderRadius: 10, alignItems: "center", marginTop: 10 },
-  submitText: { color: "#fff", fontWeight: "bold" },
+  container: {
+    flex: 1,
+    backgroundColor: "#f3f4f6",
+    justifyContent: "center", // centers vertically
+    alignItems: "center", // centers horizontally
+  },
+
+  titleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 20,
+  },
+
+  title: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    textAlign: "center",
+    fontSize: 22,
+    fontWeight: "bold",
+  },
+
+  label: { fontSize: 16, fontWeight: "600", marginVertical: 8 },
+  input: {
+    borderWidth: 1,
+    borderColor: "#D1D5DB",
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 12,
+    backgroundColor: "#fff",
+  },
   item: {
     padding: 10,
     borderRadius: 8,
@@ -290,10 +395,44 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#D1D5DB",
     backgroundColor: "#fff",
-    alignItems: "center",
   },
   itemSelected: { borderColor: "#2E7D32", borderWidth: 2 },
-  addButton: { backgroundColor: "#E5E7EB", padding: 10, borderRadius: 8, alignItems: "center", marginBottom: 12 },
+  addButton: {
+    backgroundColor: "#E5E7EB",
+    padding: 10,
+    borderRadius: 8,
+    alignItems: "center",
+    marginBottom: 12,
+  },
   addText: { color: "#2E7D32", fontWeight: "600" },
-  itemImage: { width: 40, height: 40, marginBottom: 4, borderRadius: 20 },
+  photoButton: {
+    backgroundColor: "#E5E7EB",
+    padding: 12,
+    borderRadius: 8,
+    alignItems: "center",
+    marginBottom: 12,
+  },
+  photo: { width: "100%", height: 200, borderRadius: 8, marginBottom: 12 },
+  submitButton: {
+    backgroundColor: "#2E7D32",
+    padding: 14,
+    borderRadius: 10,
+    alignItems: "center",
+  },
+  submitText: { color: "#fff", fontWeight: "bold" },
+  modalOverlay: {
+    position: "absolute",
+    inset: 0,
+    backgroundColor: "rgba(0,0,0,0.4)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  modal: {
+    width: "90%",
+    backgroundColor: "#fff",
+    padding: 20,
+    borderRadius: 12,
+  },
+  modalTitle: { fontSize: 18, fontWeight: "bold", marginBottom: 12 },
+  cancel: { textAlign: "center", marginTop: 10 },
 });

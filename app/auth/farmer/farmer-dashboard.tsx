@@ -17,7 +17,10 @@ import {
 } from "react-native";
 
 // ⭐ USE ONLY THIS SafeAreaView
-import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
 
 const BASE_URL = "https://mandiconnect.onrender.com";
 
@@ -62,8 +65,7 @@ const computePriceStats = (list: Entry[], cropId?: string | null) => {
 };
 
 const formatEntry = (item: Entry) => {
-  const cropName =
-    item.crop?.name || item.cropName || "Unknown Crop";
+  const cropName = item.crop?.name || item.cropName || "Unknown Crop";
   const marketName =
     item.market?.marketName ||
     item.marketName ||
@@ -87,7 +89,7 @@ export default function FarmerDashboard() {
   const insets = useSafeAreaInsets();
 
   const [activeTab, setActiveTab] = useState<"community" | "marketStats">(
-    "community"
+    "community",
   );
   const [loading, setLoading] = useState<boolean>(false);
   const [refreshing, setRefreshing] = useState<boolean>(false);
@@ -95,8 +97,9 @@ export default function FarmerDashboard() {
   const [communityEntries, setCommunityEntries] = useState<Entry[]>([]);
   const [marketStatsEntries, setMarketStatsEntries] = useState<Entry[]>([]);
 
-  const [filterType, setFilterType] =
-    useState<"all" | "crop" | "market">("all");
+  const [filterType, setFilterType] = useState<"all" | "crop" | "market">(
+    "all",
+  );
   const [searchText, setSearchText] = useState<string>("");
 
   const [crops, setCrops] = useState<Crop[]>([]);
@@ -139,10 +142,9 @@ export default function FarmerDashboard() {
     setLoading(true);
     try {
       const headers = await getAuthHeaders();
-      const res = await axios.get(
-        `${BASE_URL}/farmer-entries/getAllEntries`,
-        { headers }
-      );
+      const res = await axios.get(`${BASE_URL}/farmer-entries/getAllEntries`, {
+        headers,
+      });
       setCommunityEntries(Array.isArray(res.data) ? res.data : []);
     } finally {
       setLoading(false);
@@ -179,16 +181,14 @@ export default function FarmerDashboard() {
     setLoading(true);
     try {
       const headers = await getAuthHeaders();
-      const res = await axios.get(
-        `${BASE_URL}/farmer-entries/getAllEntries`,
-        { headers }
-      );
+      const res = await axios.get(`${BASE_URL}/farmer-entries/getAllEntries`, {
+        headers,
+      });
       const all = Array.isArray(res.data) ? res.data : [];
 
       const filtered = cropId
         ? all.filter((e: Entry) => {
-            const cid =
-              e.crop?._id || e.crop?.id || e.cropId || e.crop;
+            const cid = e.crop?._id || e.crop?.id || e.cropId || e.crop;
             return String(cid) === String(cropId);
           })
         : all;
@@ -206,14 +206,13 @@ export default function FarmerDashboard() {
       const headers = await getAuthHeaders();
       const res = await axios.get(
         `${BASE_URL}/marketplace/farmer/getAllListing`,
-        { headers }
+        { headers },
       );
       const all = Array.isArray(res.data) ? res.data : [];
 
       const filtered = marketId
         ? all.filter((e: Entry) => {
-            const mid =
-              e.market?._id || e.market?.id || e.marketId || e.market;
+            const mid = e.market?._id || e.market?.id || e.marketId || e.market;
             return String(mid) === String(marketId);
           })
         : all;
@@ -240,16 +239,14 @@ export default function FarmerDashboard() {
         else if (filterType === "crop")
           await fetchMarketStatsByCrop(selectedCropId || undefined);
         else if (filterType === "market")
-          await fetchMarketStatsByMarket(
-            selectedMarketId || undefined
-          );
+          await fetchMarketStatsByMarket(selectedMarketId || undefined);
       }
     })();
   }, [activeTab, filterType, selectedCropId, selectedMarketId]);
 
   const filteredCommunityEntries = useMemo(
     () => communityEntries,
-    [communityEntries]
+    [communityEntries],
   );
 
   const filteredMarketStatsEntries = useMemo(() => {
@@ -259,11 +256,7 @@ export default function FarmerDashboard() {
 
     return marketStatsEntries.filter((e) => {
       const crop = (e.crop?.name || e.cropName || "").toLowerCase();
-      const market = (
-        e.market?.marketName ||
-        e.marketName ||
-        ""
-      ).toLowerCase();
+      const market = (e.market?.marketName || e.marketName || "").toLowerCase();
       return crop.includes(q) || market.includes(q);
     });
   }, [marketStatsEntries, searchText]);
@@ -277,9 +270,7 @@ export default function FarmerDashboard() {
       else if (filterType === "crop")
         await fetchMarketStatsByCrop(selectedCropId || undefined);
       else if (filterType === "market")
-        await fetchMarketStatsByMarket(
-          selectedMarketId || undefined
-        );
+        await fetchMarketStatsByMarket(selectedMarketId || undefined);
     }
 
     setRefreshing(false);
@@ -296,23 +287,14 @@ export default function FarmerDashboard() {
       {/* HEADER */}
       <View style={styles.header}>
         <TouchableOpacity onPress={goBack} style={styles.backButton}>
-          <MaterialCommunityIcons
-            name="arrow-left"
-            size={26}
-            color="#2E7D32"
-          />
+          <MaterialCommunityIcons name="arrow-left" size={26} color="#2E7D32" />
         </TouchableOpacity>
 
         <View style={styles.headerCenter}>
-          <MaterialCommunityIcons
-            name="leaf"
-            size={34}
-            color="#2E7D32"
-          />
-          <Text style={styles.headerTitle}>Farmer’s Hub</Text>
+          <MaterialCommunityIcons size={34} color="#2E7D32" />
+          <Text style={styles.headerTitle}>🌾Farmer’s Hub</Text>
         </View>
-
-        <View style={{ width: 40 }} />
+        <TouchableOpacity style={styles.notificationButton}></TouchableOpacity>
       </View>
 
       {/* TABS */}
@@ -515,27 +497,16 @@ export default function FarmerDashboard() {
           />
         ) : activeTab === "community" ? (
           filteredCommunityEntries.length === 0 ? (
-            <Text style={styles.emptyText}>
-              No community entries found.
-            </Text>
+            <Text style={styles.emptyText}>No community entries found.</Text>
           ) : (
             filteredCommunityEntries.map((entry, idx) => {
-              const {
-                cropName,
-                marketName,
-                price,
-                quantity,
-                status,
-                time,
-              } = formatEntry(entry);
+              const { cropName, marketName, price, quantity, status, time } =
+                formatEntry(entry);
 
               return (
                 <View
                   key={entry._id || idx}
-                  style={[
-                    styles.card,
-                    width < 360 ? { padding: 10 } : {},
-                  ]}
+                  style={[styles.card, width < 360 ? { padding: 10 } : {}]}
                 >
                   <View style={styles.cardHeader}>
                     <Text style={styles.category}>{status}</Text>
@@ -575,27 +546,16 @@ export default function FarmerDashboard() {
             })
           )
         ) : filteredMarketStatsEntries.length === 0 ? (
-          <Text style={styles.emptyText}>
-            No market statistics found.
-          </Text>
+          <Text style={styles.emptyText}>No market statistics found.</Text>
         ) : (
           filteredMarketStatsEntries.map((entry, idx) => {
-            const {
-              cropName,
-              marketName,
-              price,
-              quantity,
-              status,
-              time,
-            } = formatEntry(entry);
+            const { cropName, marketName, price, quantity, status, time } =
+              formatEntry(entry);
 
             return (
               <View
                 key={entry._id || idx}
-                style={[
-                  styles.card,
-                  width < 360 ? { padding: 10 } : {},
-                ]}
+                style={[styles.card, width < 360 ? { padding: 10 } : {}]}
               >
                 <View style={styles.cardHeader}>
                   <Text style={styles.category}>{status}</Text>
@@ -649,9 +609,7 @@ export default function FarmerDashboard() {
         <View style={styles.modalBackground}>
           <View style={styles.modalCard}>
             <Text style={styles.modalTitle}>
-              {viewEntry
-                ? viewEntry.crop?.name || viewEntry.cropName
-                : ""}
+              {viewEntry ? viewEntry.crop?.name || viewEntry.cropName : ""}
             </Text>
             <Text>
               Market:{" "}
@@ -661,11 +619,9 @@ export default function FarmerDashboard() {
             </Text>
             <Text>
               Price: ₹
-              {viewEntry ? viewEntry.price ?? viewEntry.rate ?? 0 : ""}
+              {viewEntry ? (viewEntry.price ?? viewEntry.rate ?? 0) : ""}
             </Text>
-            <Text>
-              Quantity: {viewEntry ? viewEntry.quantity || "" : ""}
-            </Text>
+            <Text>Quantity: {viewEntry ? viewEntry.quantity || "" : ""}</Text>
 
             {viewEntry &&
               (() => {
@@ -675,14 +631,8 @@ export default function FarmerDashboard() {
                   viewEntry.cropId ||
                   viewEntry.crop;
 
-                const combined = [
-                  ...communityEntries,
-                  ...marketStatsEntries,
-                ];
-                const stats = computePriceStats(
-                  combined,
-                  String(cropId)
-                );
+                const combined = [...communityEntries, ...marketStatsEntries];
+                const stats = computePriceStats(combined, String(cropId));
 
                 return (
                   <View style={{ marginTop: 8 }}>
@@ -699,8 +649,7 @@ export default function FarmerDashboard() {
                         marginTop: 6,
                       }}
                     >
-                      Unit:{" "}
-                      {viewEntry.crop?.displayUnit || "N/A"}
+                      Unit: {viewEntry.crop?.displayUnit || "N/A"}
                     </Text>
                   </View>
                 );
@@ -875,6 +824,13 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: "#2E7D32",
     letterSpacing: 0.5,
+  },
+  notificationButton: {
+    padding: 8,
+    borderRadius: 8,
+    backgroundColor: "#E8F5E9",
+    justifyContent: "center",
+    alignItems: "center",
   },
 
   emptyText: {

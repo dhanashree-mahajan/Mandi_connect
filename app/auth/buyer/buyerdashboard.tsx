@@ -1,88 +1,178 @@
-import { MaterialCommunityIcons } from "@expo/vector-icons";
-import { router } from "expo-router";
-import { useState } from "react";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import axios from "axios";
+import { useFocusEffect, useRouter } from "expo-router";
+import { useCallback, useState } from "react";
 import {
+  Alert,
   FlatList,
-  SafeAreaView,
+  StatusBar,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
-// 🌾 Dummy Buyer Demand Data
-const dummyDemands = [
-  {
-    id: "1",
-    crop: "Wheat",
-    quantity: "500 kg",
-    price: "₹1,400 /quintal",
-    status: "active",
-    market: "Pune Mandi",
-    time: "2 hours ago",
-  },
-  {
-    id: "2",
-    crop: "Rice (Basmati)",
-    quantity: "300 kg",
-    price: "₹2,000 /quintal",
-    status: "fulfilled",
-    market: "Nagpur Mandi",
-    time: "1 day ago",
-  },
-  {
-    id: "3",
-    crop: "Corn",
-    quantity: "1000 kg",
-    price: "₹1,100 /quintal",
-    status: "cancelled",
-    market: "Nashik Mandi",
-    time: "3 days ago",
-  },
-];
+export const options = { headerShown: false };
+
+const BASE_URL = "https://mandiconnect.onrender.com";
 
 export default function BuyerDashboard() {
-  const [activeTab, setActiveTab] = useState<"active" | "fulfilled" | "cancelled">("active");
+  const router = useRouter();
 
-  // Filter data based on selected tab
-  const filteredDemands = dummyDemands.filter(
-    (item) => item.status === activeTab
+  const [activeTab, setActiveTab] = useState<
+    "active" | "fulfilled" | "cancelled"
+  >("active");
+  const [demands, setDemands] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [cropMap, setCropMap] = useState<Record<string, string>>({});
+
+  /* ---------- Helpers ---------- */
+
+  const getAuthHeaders = async () => {
+    const t = await AsyncStorage.getItem("token");
+    if (!t) throw new Error("Missing token");
+    return { Authorization: `Bearer ${t}` };
+  };
+
+  /* ---------- Load crops ---------- */
+
+  const loadCrops = async () => {
+    try {
+      const headers = await getAuthHeaders();
+      const res = await axios.get(`${BASE_URL}/getAllCrop`, { headers });
+
+      const map: Record<string, string> = {};
+      res.data.forEach((c: any) => {
+        map[c.id || c._id] = c.name;
+      });
+
+      setCropMap(map);
+    } catch (err) {
+      console.log("Failed to load crops", err);
+    }
+  };
+
+  /* ---------- Fetch demands ---------- */
+
+  const fetchDemands = async (status: string) => {
+    try {
+      setLoading(true);
+      const headers = await getAuthHeaders();
+
+      const res = await axios.get(
+        `${BASE_URL}/marketplace/buyer/status/${status}`,
+        { headers },
+      );
+
+      setDemands(Array.isArray(res.data) ? res.data : []);
+    } catch (err) {
+      console.log("Failed to fetch demands", err);
+      setDemands([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  /* ---------- Update status ---------- */
+
+  const updateStatus = async (id: string, status: string) => {
+    try {
+      const headers = await getAuthHeaders();
+
+      await axios.patch(
+        `${BASE_URL}/marketplace/buyer/updateStatus/${id}`,
+        { status },
+        { headers },
+      );
+
+      fetchDemands(activeTab);
+    } catch (err) {
+      console.log("Failed to update status", err);
+    }
+  };
+
+  /* ---------- Delete demand ---------- */
+
+  const deleteDemand = async (id: string) => {
+    Alert.alert(
+      "Delete Demand",
+      "Are you sure you want to delete this demand?",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              const headers = await getAuthHeaders();
+              await axios.delete(`${BASE_URL}/marketplace/buyer/delete/${id}`, {
+                headers,
+              });
+              fetchDemands(activeTab);
+            } catch (err) {
+              console.log("Failed to delete demand", err);
+            }
+          },
+        },
+      ],
+    );
+  };
+
+  /* ---------- Refresh on focus ---------- */
+
+  useFocusEffect(
+    useCallback(() => {
+      loadCrops();
+      fetchDemands(activeTab);
+    }, [activeTab]),
   );
 
-  const renderItem = ({ item }: any) => (
-    <View style={styles.card}>
-      <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-        <View>
-          <Text style={styles.crop}>{item.crop}</Text>
-          <Text style={styles.market}>{item.market}</Text>
+  /* ---------- Render item ---------- */
+
+  const renderItem = ({ item }: any) => {
+    const cropName = cropMap[item.CropId] || "Unknown Crop";
+
+    return (
+      <View style={styles.card}>
+        <Text style={styles.crop}>{cropName}</Text>
+        <Text style={styles.market}>{item.Market}</Text>
+
+        <View style={styles.row}>
+          <Text style={styles.price}>₹{item.ExpectedPrice.Value}</Text>
+          <Text style={styles.qty}>
+            {item.RequiredQuantity.Value} {item.RequiredQuantity.Unit}
+          </Text>
         </View>
-        <View style={{ alignItems: "flex-end" }}>
-          <Text style={styles.price}>{item.price}</Text>
-          <Text style={styles.quantity}>{item.quantity}</Text>
+
+        {/* ACTIONS */}
+        <View style={styles.actionRow}>
+          <TouchableOpacity
+            style={[styles.actionBtn, styles.deleteBtn]}
+            onPress={() => deleteDemand(item.id)}
+          >
+            <Text style={styles.actionText}>Delete</Text>
+          </TouchableOpacity>
         </View>
       </View>
-      <Text style={styles.time}>{item.time}</Text>
-    </View>
-  );
+    );
+  };
+
+  /* ---------- UI ---------- */
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* 🔹 Header */}
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Buyer Dashboard</Text>
-        <MaterialCommunityIcons name="bell-outline" size={22} color="#374151" />
-      </View>
+      <StatusBar barStyle="dark-content" />
 
-      {/* 🔹 Tabs */}
+      <Text style={styles.title}>🌾 Buyer Dashboard</Text>
+
+      {/* TABS */}
       <View style={styles.tabRow}>
         {["active", "fulfilled", "cancelled"].map((tab) => (
           <TouchableOpacity
             key={tab}
             onPress={() => setActiveTab(tab as any)}
-            style={[
-              styles.tabButton,
-              activeTab === tab && styles.activeTabButton,
-            ]}
+            style={[styles.tabButton, activeTab === tab && styles.activeTab]}
           >
             <Text
               style={[
@@ -90,93 +180,130 @@ export default function BuyerDashboard() {
                 activeTab === tab && styles.activeTabText,
               ]}
             >
-              {tab.charAt(0).toUpperCase() + tab.slice(1)}
+              {tab.toUpperCase()}
             </Text>
           </TouchableOpacity>
         ))}
       </View>
 
-      {/* 🔹 Data List */}
-      <FlatList
-        data={filteredDemands}
-        renderItem={renderItem}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={{ paddingBottom: 120 }}
-        ListEmptyComponent={
-          <Text style={styles.emptyText}>No demands found in this category.</Text>
-        }
-      />
-
-      {/* 🔹 Floating Add Button */}
-      <TouchableOpacity
-        style={styles.fab}
-        onPress={() => router.push("auth/buyer/add-demad")}
-      >
-        <MaterialCommunityIcons name="plus" size={28} color="#fff" />
-      </TouchableOpacity>
+      {loading ? (
+        <Text style={styles.loading}>Loading...</Text>
+      ) : (
+        <FlatList
+          data={demands}
+          renderItem={renderItem}
+          keyExtractor={(item) => item._id}
+          contentContainerStyle={{ paddingBottom: 120 }}
+        />
+      )}
     </SafeAreaView>
   );
 }
 
+/* ---------- Styles ---------- */
+
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#F9FAFB" },
-  header: {
+  container: {
+    flex: 1,
+    backgroundColor: "#F9FAFB",
     padding: 16,
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    backgroundColor: "#fff",
-    borderBottomColor: "#E5E7EB",
-    borderBottomWidth: 1,
   },
-  headerTitle: { fontSize: 20, fontWeight: "700", color: "#1F2937" },
+
+  title: {
+    fontSize: 22,
+    fontWeight: "800",
+    textAlign: "center",
+    marginBottom: 16,
+  },
+
   tabRow: {
     flexDirection: "row",
-    justifyContent: "center",
-    marginTop: 10,
     backgroundColor: "#fff",
-    paddingVertical: 8,
+    borderRadius: 10,
+    padding: 6,
+    marginBottom: 12,
   },
+
   tabButton: {
-    paddingVertical: 6,
-    paddingHorizontal: 14,
-    borderRadius: 6,
-    marginHorizontal: 5,
-    borderWidth: 1,
-    borderColor: "#2E7D32",
+    flex: 1,
+    paddingVertical: 8,
+    borderRadius: 8,
+    alignItems: "center",
   },
-  activeTabButton: { backgroundColor: "#2E7D32" },
-  tabText: { color: "#2E7D32", fontWeight: "600" },
-  activeTabText: { color: "#fff" },
+
+  activeTab: {
+    backgroundColor: "#2E7D32",
+  },
+
+  tabText: {
+    fontWeight: "700",
+    color: "#2E7D32",
+  },
+
+  activeTabText: {
+    color: "#fff",
+  },
+
   card: {
     backgroundColor: "#fff",
-    marginHorizontal: 16,
-    marginVertical: 8,
-    padding: 16,
     borderRadius: 12,
-    shadowColor: "#000",
-    shadowOpacity: 0.05,
-    shadowRadius: 3,
-    elevation: 2,
-  },
-  crop: { fontSize: 16, fontWeight: "bold", color: "#1F2937" },
-  market: { color: "#6B7280", fontSize: 13, marginTop: 2 },
-  price: { fontSize: 16, fontWeight: "600", color: "#2E7D32" },
-  quantity: { color: "#4B5563", fontSize: 13 },
-  time: { marginTop: 6, color: "#9CA3AF", fontSize: 12 },
-  fab: {
-    position: "absolute",
-    bottom: 80,
-    right: 20,
-    backgroundColor: "#2E7D32",
-    borderRadius: 30,
     padding: 16,
-    elevation: 5,
+    marginBottom: 12,
   },
-  emptyText: {
-    textAlign: "center",
+
+  crop: {
+    fontSize: 16,
+    fontWeight: "700",
+  },
+
+  market: {
     color: "#6B7280",
+    marginBottom: 8,
+  },
+
+  row: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: 8,
+  },
+
+  price: {
+    color: "#2E7D32",
+    fontWeight: "700",
+  },
+
+  qty: {
+    fontWeight: "600",
+  },
+
+  actionRow: {
+    flexDirection: "row",
+    marginTop: 10,
+  },
+
+  actionBtn: {
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    backgroundColor: "#DCFCE7",
+    borderRadius: 6,
+    marginRight: 8,
+  },
+
+  cancelBtn: {
+    backgroundColor: "#FEE2E2",
+  },
+
+  deleteBtn: {
+    backgroundColor: "#E5E7EB",
+  },
+
+  actionText: {
+    fontSize: 13,
+    fontWeight: "600",
+  },
+
+  loading: {
+    textAlign: "center",
     marginTop: 30,
-    fontSize: 14,
   },
 });
