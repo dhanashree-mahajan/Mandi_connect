@@ -1,153 +1,181 @@
 import { MaterialCommunityIcons } from "@expo/vector-icons";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
+import { StatusBar } from "expo-status-bar";
 import {
   ImageBackground,
-  SafeAreaView,
   ScrollView,
-  StatusBar,
+  StyleSheet,
   Text,
   TouchableOpacity,
   View,
-  useWindowDimensions,
 } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 export default function Index() {
   const router = useRouter();
-  const { width } = useWindowDimensions();
-  const insets = useSafeAreaInsets();
-  const isLargeScreen = width > 768;
+
+  const goAsBuyer = async () => {
+    const token = await AsyncStorage.getItem("token");
+    const role = await AsyncStorage.getItem("role");
+
+    if (token && role === "buyer") {
+      router.push("/auth/buyer/buyerdashboard");
+    } else {
+      router.push("/auth/buyerlogin");
+    }
+  };
+
+  const goAsFarmer = async () => {
+    const token = await AsyncStorage.getItem("token");
+    const role = await AsyncStorage.getItem("role");
+
+    if (token && role === "farmer") {
+      router.push("/auth/farmer/farmer-dashboard");
+    } else {
+      router.push("/auth/farmerlogin");
+    }
+  };
 
   return (
-    <SafeAreaView
-      style={{
-        flex: 1,
-        backgroundColor: "#fff",
-        paddingTop: insets.top,        // ⭐ top safe area
-        paddingBottom: insets.bottom,  // ⭐ bottom safe area
-      }}
-    >
-      <StatusBar backgroundColor="#fff" barStyle="dark-content" />
+    <>
+      <StatusBar style="light" translucent />
 
       <ImageBackground
         source={require("../assets/images/background.jpg")}
-        style={{ flex: 1, width: "100%", height: "100%" }}
+        style={styles.background}
         resizeMode="cover"
       >
-        <ScrollView
-          contentContainerStyle={{
-            flexGrow: 1,
-            padding: 20,
-          }}
-        >
-          <View style={{ alignItems: "center", marginBottom: 20 }}>
-            <Text style={{ fontSize: 24, fontWeight: "bold", color: "#2E7D32" }}>
-              🌾 Mandi Connect
-            </Text>
-            <Text
-              style={{
-                fontSize: 14,
-                color: "#000",
-                marginTop: 5,
-                textAlign: "center",
-                fontWeight: "600",
-              }}
-            >
-              Connecting Farms to Futures
-            </Text>
-          </View>
+        {/* Overlay */}
+        <View style={styles.overlay} />
 
-          <View
-            style={{
-              flexDirection: isLargeScreen ? "row" : "column",
-              justifyContent: isLargeScreen ? "space-evenly" : "center",
-              alignItems: "center",
-              flexWrap: "wrap",
-              marginBottom: 20,
-            }}
+        <SafeAreaView style={styles.safe}>
+          <ScrollView
+            contentContainerStyle={styles.scrollContent}
+            showsVerticalScrollIndicator={false}
           >
-            <View
-              style={{
-                width: isLargeScreen ? "40%" : "90%",
-                backgroundColor: "rgba(255,255,255,0.95)",
-                margin: 10,
-                padding: 20,
-                borderRadius: 15,
-                alignItems: "center",
-                shadowColor: "#000",
-                shadowOffset: { width: 0, height: 3 },
-                shadowOpacity: 0.2,
-                shadowRadius: 4,
-                elevation: 5,
-              }}
-            >
-              <MaterialCommunityIcons name="account-outline" size={40} color="#2E7D32" />
-              <Text
-                style={{
-                  fontSize: 18,
-                  fontWeight: "bold",
-                  color: "#2E7D32",
-                  marginVertical: 10,
-                }}
-              >
-                Buyers
-              </Text>
-              <TouchableOpacity
-                style={{
-                  backgroundColor: "#2E7D32",
-                  paddingVertical: 10,
-                  borderRadius: 10,
-                  width: "100%",
-                  alignItems: "center",
-                }}
-                onPress={() => router.push("/auth/buyerlogin")}
-              >
-                <Text style={{ color: "#fff", fontWeight: "600" }}>Go as Buyer →</Text>
+            <Text style={styles.title}>🌾 Mandi Connect</Text>
+            <Text style={styles.subtitle}>
+              Connecting Farmers and Buyers Seamlessly
+            </Text>
+
+            {/* Buyer Card */}
+            <View style={styles.card}>
+              <MaterialCommunityIcons
+                name="account-outline"
+                size={42}
+                color="#2E7D32"
+              />
+              <Text style={styles.cardTitle}>Buyer</Text>
+
+              <TouchableOpacity style={styles.buyerBtn} onPress={goAsBuyer}>
+                <Text style={styles.btnText}>Go as Buyer</Text>
               </TouchableOpacity>
             </View>
 
-            <View
-              style={{
-                width: isLargeScreen ? "40%" : "90%",
-                backgroundColor: "rgba(255,255,255,0.95)",
-                margin: 10,
-                padding: 20,
-                borderRadius: 15,
-                alignItems: "center",
-                shadowColor: "#000",
-                shadowOffset: { width: 0, height: 3 },
-                shadowOpacity: 0.2,
-                shadowRadius: 4,
-                elevation: 5,
-              }}
-            >
-              <MaterialCommunityIcons name="sprout-outline" size={40} color="#388E3C" />
-              <Text
-                style={{
-                  fontSize: 18,
-                  fontWeight: "bold",
-                  color: "#388E3C",
-                  marginVertical: 10,
-                }}
-              >
-                Farmers
-              </Text>
-              <TouchableOpacity
-                style={{
-                  backgroundColor: "#388E3C",
-                  paddingVertical: 10,
-                  borderRadius: 10,
-                  width: "100%",
-                  alignItems: "center",
-                }}
-                onPress={() => router.push("/auth/farmerlogin")}
-              >
-                <Text style={{ color: "#fff", fontWeight: "600" }}>Go as Farmer →</Text>
+            {/* Farmer Card */}
+            <View style={styles.card}>
+              <MaterialCommunityIcons
+                name="sprout-outline"
+                size={42}
+                color="#388E3C"
+              />
+              <Text style={styles.cardTitle}>Farmer</Text>
+
+              <TouchableOpacity style={styles.farmerBtn} onPress={goAsFarmer}>
+                <Text style={styles.btnText}>Go as Farmer</Text>
               </TouchableOpacity>
             </View>
-          </View>
-        </ScrollView>
+          </ScrollView>
+        </SafeAreaView>
       </ImageBackground>
-    </SafeAreaView>
+    </>
   );
 }
+
+/* ---------------- STYLES ---------------- */
+
+const styles = StyleSheet.create({
+  safe: {
+    flex: 1,
+    backgroundColor: "transparent",
+  },
+
+  background: {
+    flex: 1,
+  },
+
+  overlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(0,0,0,0.35)",
+  },
+
+  scrollContent: {
+    flexGrow: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 20,
+  },
+
+  title: {
+    fontSize: 30,
+    fontWeight: "bold",
+    color: "#fff",
+    marginBottom: 6,
+    textAlign: "center",
+  },
+
+  subtitle: {
+    fontSize: 14,
+    color: "#E5E7EB",
+    marginBottom: 30,
+    textAlign: "center",
+  },
+
+  card: {
+    width: "90%",
+    maxWidth: 360,
+    backgroundColor: "rgba(255,255,255,0.9)",
+    borderRadius: 16,
+    padding: 20,
+    alignItems: "center",
+    marginBottom: 20,
+
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.4)",
+
+    shadowColor: "#000",
+    shadowOpacity: 0.12,
+    shadowOffset: { width: 0, height: 3 },
+    shadowRadius: 8,
+    elevation: 4,
+  },
+
+  cardTitle: {
+    fontSize: 20,
+    fontWeight: "600",
+    marginVertical: 10,
+  },
+
+  buyerBtn: {
+    backgroundColor: "#2E7D32",
+    paddingVertical: 12,
+    borderRadius: 10,
+    width: "100%",
+    alignItems: "center",
+  },
+
+  farmerBtn: {
+    backgroundColor: "#388E3C",
+    paddingVertical: 12,
+    borderRadius: 10,
+    width: "100%",
+    alignItems: "center",
+  },
+
+  btnText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "600",
+  },
+});

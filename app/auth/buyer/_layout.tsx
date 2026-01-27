@@ -1,28 +1,42 @@
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { Tabs, useRouter } from "expo-router";
-import { useEffect } from "react";
-import { Platform } from "react-native";
+import { Tabs, router } from "expo-router";
+import { useEffect, useState } from "react";
+import { ActivityIndicator, Platform, View } from "react-native";
 import {
   SafeAreaView,
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
 
 export default function BuyerLayout() {
-  const router = useRouter();
   const insets = useSafeAreaInsets();
+  const TAB_BAR_HEIGHT = Platform.OS === "ios" ? 56 + insets.bottom : 60;
+
+  const [checkingAuth, setCheckingAuth] = useState(true);
 
   useEffect(() => {
-    const checkAuth = async () => {
+    const checkBuyerAuth = async () => {
       const token = await AsyncStorage.getItem("token");
-      if (!token) {
-        router.replace("/(auth)/login");
+      const role = await AsyncStorage.getItem("role");
+
+      if (!token || role !== "buyer") {
+        router.replace("/auth/buyerlogin");
+        return;
       }
+
+      setCheckingAuth(false);
     };
-    checkAuth();
+
+    checkBuyerAuth();
   }, []);
 
-  const TAB_BAR_HEIGHT = Platform.OS === "ios" ? 56 + insets.bottom : 60;
+  if (checkingAuth) {
+    return (
+      <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
+        <ActivityIndicator size="large" />
+      </View>
+    );
+  }
 
   return (
     <SafeAreaView style={{ flex: 1 }} edges={["bottom"]}>
@@ -43,6 +57,7 @@ export default function BuyerLayout() {
         }}
       >
         <Tabs.Screen
+          key="buyerdashboard"
           name="buyerdashboard"
           options={{
             title: "Home",
@@ -57,6 +72,7 @@ export default function BuyerLayout() {
         />
 
         <Tabs.Screen
+          key="marketplace"
           name="marketplace"
           options={{
             title: "Marketplace",
@@ -71,6 +87,7 @@ export default function BuyerLayout() {
         />
 
         <Tabs.Screen
+          key="notifications"
           name="notifications"
           options={{
             title: "Notifications",
@@ -85,6 +102,7 @@ export default function BuyerLayout() {
         />
 
         <Tabs.Screen
+          key="profile"
           name="profile"
           options={{
             title: "Profile",
@@ -98,7 +116,12 @@ export default function BuyerLayout() {
           }}
         />
 
-        <Tabs.Screen name="addDemand" options={{ href: null }} />
+        {/* hidden route */}
+        <Tabs.Screen
+          key="addDemand"
+          name="addDemand"
+          options={{ href: null }}
+        />
       </Tabs>
     </SafeAreaView>
   );

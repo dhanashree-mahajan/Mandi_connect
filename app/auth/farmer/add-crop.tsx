@@ -3,13 +3,13 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import axios from "axios";
 import * as ImagePicker from "expo-image-picker";
 import { useRouter } from "expo-router";
+import { StatusBar } from "expo-status-bar";
 import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
   Image,
   Platform,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
@@ -17,24 +17,26 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
 
-interface Crop {
+/* ---------- TYPES ---------- */
+type Crop = {
   id: string;
   name: string;
   type: string;
-  displayUnit?: string;
-  imageUrl?: string;
-}
+};
 
-interface Market {
+type Market = {
   id: string;
   marketName: string;
-  imageUrl?: string;
-}
+};
 
 const BASE_URL = "https://mandiconnect.onrender.com";
 
+/* ---------- ALERT ---------- */
 const showAlert = (title: string, message: string) => {
   if (Platform.OS === "web") {
     window.alert(`${title}\n${message}`);
@@ -51,6 +53,7 @@ export default function AddFarmerEntry() {
   const [markets, setMarkets] = useState<Market[]>([]);
   const [selectedCrop, setSelectedCrop] = useState<Crop | null>(null);
   const [selectedMarket, setSelectedMarket] = useState<Market | null>(null);
+
   const [price, setPrice] = useState("");
   const [quantity, setQuantity] = useState("");
   const [photo, setPhoto] = useState<string | null>(null);
@@ -67,11 +70,11 @@ export default function AddFarmerEntry() {
     fetchCropsAndMarkets();
   }, []);
 
+  /* ---------- FETCH DATA ---------- */
   const fetchCropsAndMarkets = async () => {
-    setLoading(true);
     try {
       const token = await AsyncStorage.getItem("token");
-      if (!token) throw new Error("Not logged in");
+      if (!token) return showAlert("Error", "Please login again");
 
       const [cropRes, marketRes] = await Promise.all([
         axios.get(`${BASE_URL}/getAllCrop`, {
@@ -84,29 +87,34 @@ export default function AddFarmerEntry() {
 
       setCrops(
         cropRes.data.map((c: any) => ({
-          ...c,
           id: c.id || c._id,
+          name: c.name,
+          type: c.type,
         })),
       );
 
       setMarkets(
         marketRes.data.map((m: any) => ({
-          ...m,
           id: m.id || m._id,
+          marketName: m.marketName,
         })),
       );
-    } catch (err: any) {
-      showAlert("Error", err.message || "Failed to load data");
-    } finally {
-      setLoading(false);
+    } catch {
+      showAlert("Error", "Failed to load data");
     }
   };
 
+  /* ---------- IMAGE PICKER ---------- */
   const pickImage = async () => {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      return showAlert("Permission denied", "Allow photo access");
+    }
+
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      quality: 0.7,
       allowsEditing: true,
+      quality: 0.7,
     });
 
     if (!result.canceled) {
@@ -114,6 +122,7 @@ export default function AddFarmerEntry() {
     }
   };
 
+  /* ---------- ADD CROP ---------- */
   const handleAddCrop = async () => {
     if (!newCropName || !newCropType) {
       return showAlert("Missing", "Enter crop name and type");
@@ -127,10 +136,14 @@ export default function AddFarmerEntry() {
         { headers: { Authorization: `Bearer ${token}` } },
       );
 
-      const crop = { ...res.data, id: res.data.id || res.data._id };
+      const crop = {
+        id: res.data.id || res.data._id,
+        name: res.data.name,
+        type: res.data.type,
+      };
+
       setCrops((prev) => [...prev, crop]);
       setSelectedCrop(crop);
-
       setShowCropModal(false);
       setNewCropName("");
       setNewCropType("");
@@ -139,6 +152,7 @@ export default function AddFarmerEntry() {
     }
   };
 
+  /* ---------- ADD MARKET ---------- */
   const handleAddMarket = async () => {
     if (!newMarketName) {
       return showAlert("Missing", "Enter market name");
@@ -152,10 +166,13 @@ export default function AddFarmerEntry() {
         { headers: { Authorization: `Bearer ${token}` } },
       );
 
-      const market = { ...res.data, id: res.data.id || res.data._id };
+      const market = {
+        id: res.data.id || res.data._id,
+        marketName: res.data.marketName,
+      };
+
       setMarkets((prev) => [...prev, market]);
       setSelectedMarket(market);
-
       setShowMarketModal(false);
       setNewMarketName("");
     } catch {
@@ -163,53 +180,65 @@ export default function AddFarmerEntry() {
     }
   };
 
+  /* ---------- SUBMIT (BACKEND-ALIGNED) ---------- */
   const handleSubmit = async () => {
     if (!selectedCrop || !selectedMarket || !price || !quantity) {
       return showAlert("Missing", "Fill all required fields");
     }
 
-    setLoading(true);
     try {
+      setLoading(true);
       const token = await AsyncStorage.getItem("token");
-      const userId = await AsyncStorage.getItem("userId");
-      if (!token || !userId) throw new Error("Not logged in");
+      if (!token) return showAlert("Error", "Please login again");
 
-      await axios.post(
-        `${BASE_URL}/farmer-entries/add`,
-        {
-          farmer: { id: userId },
-          crop: { id: selectedCrop.id },
-          market: { id: selectedMarket.id },
-          price: Number(price),
-          quantity,
-          photo: photo || "",
-          status: "active",
-          feedback: { agreeCount: 0, disagreeCount: 0, votedFarmers: [] },
+      const payload = {
+        CropId: selectedCrop.id,
+        MarketId: selectedMarket.id,
+        Price: {
+          Value: Number(price),
+          Currency: "INR",
         },
-        { headers: { Authorization: `Bearer ${token}` } },
-      );
+        Quantity: {
+          Value: Number(quantity),
+          Unit: "kg",
+        },
+        Photo: photo || "",
+        Status: "active",
+      };
 
-      showAlert("Success", "Farmer entry added");
-      setSelectedCrop(null);
-      setSelectedMarket(null);
-      setPrice("");
-      setQuantity("");
-      setPhoto(null);
+      console.log("FINAL PAYLOAD 👉", payload);
+
+      await axios.post(`${BASE_URL}/farmer-entries/add`, payload, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      showAlert("Success", "Entry added successfully");
+      router.replace("/auth/farmer/farmer-dashboard");
     } catch (err: any) {
-      showAlert("Error", err.response?.data || "Failed to submit");
+      console.log("SUBMIT ERROR 👉", err.response?.data || err.message);
+      showAlert(
+        "Error",
+        err.response?.data?.message ||
+          JSON.stringify(err.response?.data) ||
+          "Failed to submit",
+      );
     } finally {
       setLoading(false);
     }
   };
 
+  /* ---------- UI ---------- */
   return (
-    <SafeAreaView
-      style={[
-        styles.container,
-        { paddingTop: insets.top, paddingBottom: insets.bottom },
-      ]}
-    >
-      <ScrollView contentContainerStyle={{ padding: 20 }}>
+    <SafeAreaView style={styles.safeArea}>
+      <StatusBar style="dark" />
+
+      <ScrollView
+        contentContainerStyle={[
+          styles.scroll,
+          { paddingBottom: insets.bottom + 40 },
+        ]}
+      >
+        {/* HEADER */}
         <View style={styles.titleRow}>
           <TouchableOpacity
             onPress={() => router.replace("/auth/farmer/farmer-dashboard")}
@@ -220,11 +249,13 @@ export default function AddFarmerEntry() {
               color="#2E7D32"
             />
           </TouchableOpacity>
-          <Text style={styles.title}>🌾Add Crop List</Text>
+          <Text style={styles.title}>🌾 Add Crop List</Text>
+          <View style={{ width: 28 }} />
         </View>
 
+        {/* CROP */}
         <Text style={styles.label}>Crop</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+        <ScrollView horizontal>
           {crops.map((crop) => (
             <TouchableOpacity
               key={crop.id}
@@ -246,8 +277,9 @@ export default function AddFarmerEntry() {
           <Text style={styles.addText}>+ Add Crop</Text>
         </TouchableOpacity>
 
+        {/* MARKET */}
         <Text style={styles.label}>Market</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+        <ScrollView horizontal>
           {markets.map((market) => (
             <TouchableOpacity
               key={market.id}
@@ -278,9 +310,10 @@ export default function AddFarmerEntry() {
         />
 
         <TextInput
-          placeholder="Quantity (e.g. 10 kg)"
+          placeholder="Quantity (kg)"
           value={quantity}
           onChangeText={setQuantity}
+          keyboardType="numeric"
           style={styles.input}
         />
 
@@ -290,7 +323,11 @@ export default function AddFarmerEntry() {
 
         {photo && <Image source={{ uri: photo }} style={styles.photo} />}
 
-        <TouchableOpacity onPress={handleSubmit} style={styles.submitButton}>
+        <TouchableOpacity
+          onPress={handleSubmit}
+          style={styles.submitButton}
+          disabled={loading}
+        >
           {loading ? (
             <ActivityIndicator color="#fff" />
           ) : (
@@ -299,11 +336,10 @@ export default function AddFarmerEntry() {
         </TouchableOpacity>
       </ScrollView>
 
-      {/* Crop Modal */}
+      {/* ADD CROP MODAL */}
       {showCropModal && (
         <View style={styles.modalOverlay}>
           <View style={styles.modal}>
-            <Text style={styles.modalTitle}>Add Crop</Text>
             <TextInput
               placeholder="Crop name"
               value={newCropName}
@@ -320,20 +356,19 @@ export default function AddFarmerEntry() {
               onPress={handleAddCrop}
               style={styles.submitButton}
             >
-              <Text style={styles.submitText}>Save</Text>
+              <Text style={styles.submitText}>Add</Text>
             </TouchableOpacity>
             <TouchableOpacity onPress={() => setShowCropModal(false)}>
-              <Text style={styles.cancel}>Cancel</Text>
+              <Text style={{ textAlign: "center", marginTop: 10 }}>Cancel</Text>
             </TouchableOpacity>
           </View>
         </View>
       )}
 
-      {/* Market Modal */}
+      {/* ADD MARKET MODAL */}
       {showMarketModal && (
         <View style={styles.modalOverlay}>
           <View style={styles.modal}>
-            <Text style={styles.modalTitle}>Add Market</Text>
             <TextInput
               placeholder="Market name"
               value={newMarketName}
@@ -344,10 +379,10 @@ export default function AddFarmerEntry() {
               onPress={handleAddMarket}
               style={styles.submitButton}
             >
-              <Text style={styles.submitText}>Save</Text>
+              <Text style={styles.submitText}>Add</Text>
             </TouchableOpacity>
             <TouchableOpacity onPress={() => setShowMarketModal(false)}>
-              <Text style={styles.cancel}>Cancel</Text>
+              <Text style={{ textAlign: "center", marginTop: 10 }}>Cancel</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -356,29 +391,12 @@ export default function AddFarmerEntry() {
   );
 }
 
+/* ---------- STYLES ---------- */
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#f3f4f6",
-    justifyContent: "center", // centers vertically
-    alignItems: "center", // centers horizontally
-  },
-
-  titleRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 20,
-  },
-
-  title: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    textAlign: "center",
-    fontSize: 22,
-    fontWeight: "bold",
-  },
-
+  safeArea: { flex: 1, backgroundColor: "#f3f4f6" },
+  scroll: { padding: 20, maxWidth: 600, alignSelf: "center" },
+  titleRow: { flexDirection: "row", alignItems: "center", marginBottom: 20 },
+  title: { flex: 1, textAlign: "center", fontSize: 22, fontWeight: "800" },
   label: { fontSize: 16, fontWeight: "600", marginVertical: 8 },
   input: {
     borderWidth: 1,
@@ -418,8 +436,9 @@ const styles = StyleSheet.create({
     padding: 14,
     borderRadius: 10,
     alignItems: "center",
+    marginTop: 10,
   },
-  submitText: { color: "#fff", fontWeight: "bold" },
+  submitText: { color: "#fff", fontWeight: "700" },
   modalOverlay: {
     position: "absolute",
     inset: 0,
@@ -428,11 +447,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   modal: {
-    width: "90%",
+    width: "85%",
     backgroundColor: "#fff",
-    padding: 20,
     borderRadius: 12,
+    padding: 16,
   },
-  modalTitle: { fontSize: 18, fontWeight: "bold", marginBottom: 12 },
-  cancel: { textAlign: "center", marginTop: 10 },
 });

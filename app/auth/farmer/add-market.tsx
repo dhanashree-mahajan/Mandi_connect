@@ -7,28 +7,22 @@ import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
-  View
+  View,
 } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
 
 const BASE_URL = "https://mandiconnect.onrender.com";
-const PLACEHOLDER = "https://cdn-icons-png.flaticon.com/512/149/149071.png";
 
 type Crop = { _id?: string; id?: string; name: string };
 type Market = { _id?: string; id?: string; marketName: string };
-
-const cropTypeOptions = [
-  { label: "Veg", value: "vegetable" },
-  { label: "Fruit", value: "fruit" },
-  { label: "Grain", value: "grain" },
-  { label: "Leafy", value: "leafy-vegetable" },
-];
 
 export default function AddMarket() {
   const router = useRouter();
@@ -37,86 +31,71 @@ export default function AddMarket() {
   const [crops, setCrops] = useState<Crop[]>([]);
   const [markets, setMarkets] = useState<Market[]>([]);
 
-  const [selectedCropId, setSelectedCropId] = useState<string>("");
-  const [selectedMarketId, setSelectedMarketId] = useState<string>("");
+  const [selectedCropId, setSelectedCropId] = useState("");
+  const [selectedMarketId, setSelectedMarketId] = useState("");
 
-  const [quantity, setQuantity] = useState<string>("");
-  const [unit, setUnit] = useState<string>("kg");
-  const [price, setPrice] = useState<string>("");
+  const [quantity, setQuantity] = useState("");
+  const [unit, setUnit] = useState("kg");
+  const [price, setPrice] = useState("");
 
-  // ⭐ ADDED VILLAGE FIELD
-  const [village, setVillage] = useState<string>("");
+  const [village, setVillage] = useState("");
+  const [city, setCity] = useState("");
+  const [stateName, setStateName] = useState("Maharashtra");
+  const country = "India";
 
-  const [city, setCity] = useState<string>("");
-  const [stateName, setStateName] = useState<string>("Maharashtra");
-  const [country] = useState<string>("India");
+  const [photoUrl, setPhotoUrl] = useState("");
+  const [publicId, setPublicId] = useState("");
 
-  const [photoUrl, setPhotoUrl] = useState<string>("");
-  const [publicId, setPublicId] = useState<string>("");
-
-  const [uploading, setUploading] = useState<boolean>(false);
-  const [userId, setUserId] = useState<string>("");
-  const [loadingLists, setLoadingLists] = useState<boolean>(false);
-
-  const [showCropModal, setShowCropModal] = useState(false);
-  const [showMarketModal, setShowMarketModal] = useState(false);
-
-  const [newCropName, setNewCropName] = useState("");
-  const [newCropType, setNewCropType] = useState<string>("vegetable");
-  const [newCropVariety, setNewCropVariety] = useState("");
-  const [savingCrop, setSavingCrop] = useState(false);
-
-  const [newMarketName, setNewMarketName] = useState("");
-  const [savingMarket, setSavingMarket] = useState(false);
-
+  const [uploading, setUploading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [userId, setUserId] = useState("");
 
   useEffect(() => {
-    (async () => {
-      try {
-        setLoadingLists(true);
-
-        const [token, storedUserId] = await Promise.all([
-          AsyncStorage.getItem("token"),
-          AsyncStorage.getItem("userId"),
-        ]);
-
-        setUserId(storedUserId || "");
-        await loadLists(token || "");
-      } catch {
-        Alert.alert("Error", "Failed to load crops or markets.");
-      } finally {
-        setLoadingLists(false);
-      }
-    })();
+    loadInitialData();
   }, []);
 
-  const loadLists = async (token: string) => {
-    const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
-    const [cropsRes, marketsRes] = await Promise.all([
-      axios.get(`${BASE_URL}/getAllCrop`, { headers }),
-      axios.get(`${BASE_URL}/getAllMarket`, { headers }),
-    ]);
-    setCrops(Array.isArray(cropsRes.data) ? cropsRes.data : []);
-    setMarkets(Array.isArray(marketsRes.data) ? marketsRes.data : []);
+  const loadInitialData = async () => {
+    try {
+      const [token, storedUserId] = await Promise.all([
+        AsyncStorage.getItem("token"),
+        AsyncStorage.getItem("userId"),
+      ]);
+
+      if (!token) throw new Error("Not logged in");
+
+      setUserId(storedUserId || "");
+
+      const headers = { Authorization: `Bearer ${token}` };
+      const [cropRes, marketRes] = await Promise.all([
+        axios.get(`${BASE_URL}/getAllCrop`, { headers }),
+        axios.get(`${BASE_URL}/getAllMarket`, { headers }),
+      ]);
+
+      setCrops(cropRes.data || []);
+      setMarkets(marketRes.data || []);
+    } catch {
+      Alert.alert("Error", "Failed to load crops or markets");
+    }
   };
 
-  const cropId = (c: Crop) => c.id || c._id || "";
-  const marketId = (m: Market) => m.id || m._id || "";
-
+  /* ---------- IMAGE PICKER ---------- */
   const pickImage = async () => {
-    try {
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: true,
-        aspect: [4, 3],
-        quality: 0.8,
-      });
-      if (!result.canceled) {
-        await uploadImage(result.assets[0].uri);
-      }
-    } catch {
-      Alert.alert("Error", "Failed to pick image.");
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+
+    if (!permission.granted) {
+      Alert.alert("Permission required", "Allow photo access to continue");
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [4, 3],
+      quality: 0.8,
+    });
+
+    if (!result.canceled) {
+      uploadImage(result.assets[0].uri);
     }
   };
 
@@ -132,104 +111,91 @@ export default function AddMarket() {
         type: "image/jpeg",
       } as any);
 
-      const res = await axios.post(`${BASE_URL}/marketplace/farmer/upload`, formData, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "multipart/form-data",
+      const res = await axios.post(
+        `${BASE_URL}/marketplace/farmer/upload`,
+        formData,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "multipart/form-data",
+          },
         },
-      });
+      );
 
-      setPhotoUrl(res?.data?.url || "");
-      setPublicId(res?.data?.public_id || "");
+      setPhotoUrl(res.data?.url || "");
+      setPublicId(res.data?.public_id || "");
     } catch {
-      setPhotoUrl("");
-      setPublicId("");
+      Alert.alert("Error", "Image upload failed");
     } finally {
       setUploading(false);
     }
   };
 
+  /* ---------- SUBMIT ---------- */
   const handleSubmit = async () => {
-    if (!selectedCropId) return Alert.alert("Missing", "Please select a crop.");
-    if (!quantity || isNaN(Number(quantity))) return Alert.alert("Missing", "Enter valid quantity.");
-    if (!unit.trim()) return Alert.alert("Missing", "Enter unit.");
-    if (!price || isNaN(Number(price))) return Alert.alert("Missing", "Enter valid price.");
-
-    const token = await AsyncStorage.getItem("token");
-    if (!token || !userId) {
-      Alert.alert("Auth", "Login again.");
-      return;
-    }
-
-    const payload: any = {
-      farmer: { id: userId },
-      crop: { id: selectedCropId },
-      quantity: Number(quantity),
-      unit: unit.trim().toLowerCase(),
-      price: Number(price),
-      location: {
-        village: village.trim(),   // ⭐ ADDED
-        city: city.trim(),
-        state: stateName.trim(),
-        country,
-      },
-      photoUrl,
-      publicId,
-      status: "active",
-    };
-
-    if (selectedMarketId) {
-      payload.market = { id: selectedMarketId };
-    }
+    if (!selectedCropId) return Alert.alert("Missing", "Please select a crop");
+    if (!quantity || isNaN(Number(quantity)))
+      return Alert.alert("Missing", "Enter valid quantity");
+    if (!price || isNaN(Number(price)))
+      return Alert.alert("Missing", "Enter valid price");
 
     try {
       setSubmitting(true);
+      const token = await AsyncStorage.getItem("token");
+      if (!token || !userId) throw new Error("Not logged in");
+
+      const payload: any = {
+        farmer: { id: userId },
+        crop: { id: selectedCropId },
+        quantity: Number(quantity),
+        unit,
+        price: Number(price),
+        location: {
+          village,
+          city,
+          state: stateName,
+          country,
+        },
+        photoUrl,
+        publicId,
+        status: "active",
+      };
+
+      if (selectedMarketId) {
+        payload.market = { id: selectedMarketId };
+      }
+
       await axios.post(`${BASE_URL}/marketplace/farmer/cropListing`, payload, {
         headers: { Authorization: `Bearer ${token}` },
       });
 
-      Alert.alert("Success", "Crop listing added.");
-      resetForm();
+      Alert.alert("Success", "Crop listing added");
       router.back();
     } catch {
-      Alert.alert("Error", "Failed to add listing.");
+      Alert.alert("Error", "Failed to add listing");
     } finally {
       setSubmitting(false);
     }
   };
 
-  const resetForm = () => {
-    setSelectedCropId("");
-    setSelectedMarketId("");
-    setQuantity("");
-    setUnit("kg");
-    setPrice("");
-    setVillage(""); // ⭐ CLEAR village
-    setCity("");
-    setStateName("Maharashtra");
-    setPhotoUrl("");
-    setPublicId("");
-  };
-
+  /* ---------- UI ---------- */
   return (
     <View style={{ flex: 1, backgroundColor: "#fff" }}>
-
-      {/* HEADER (unchanged) */}
-      <SafeAreaView
-        style={[
-          styles.stickyHeader,
-          { paddingTop: insets.top },
-        ]}
-      >
+      {/* HEADER */}
+      <SafeAreaView style={[styles.stickyHeader, { paddingTop: insets.top }]}>
         <View style={styles.stickyHeaderInner}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-            <MaterialCommunityIcons name="arrow-left" size={24} color="#2E7D32" />
+          <TouchableOpacity
+            onPress={() => router.back()}
+            style={styles.backButton}
+          >
+            <MaterialCommunityIcons
+              name="arrow-left"
+              size={24}
+              color="#2E7D32"
+            />
           </TouchableOpacity>
 
-          <View style={styles.headerCenter}>
-            <Text style={styles.headerTitle}>🌾Add Market</Text>
-          </View>
-
+          <Text style={styles.headerTitle}>🌾 Add Market</Text>
           <View style={{ width: 40 }} />
         </View>
       </SafeAreaView>
@@ -237,12 +203,13 @@ export default function AddMarket() {
       <ScrollView
         contentContainerStyle={[
           styles.container,
-          { paddingTop: insets.top + 56 + 12 },
-          { paddingBottom: insets.bottom + 20 },
+          {
+            paddingTop: insets.top + 56 + 12,
+            paddingBottom: insets.bottom + 24,
+          },
         ]}
+        showsVerticalScrollIndicator={false}
       >
-
-        {/* ---- Location ---- */}
         <Text style={styles.sectionTitle}>Location</Text>
 
         <View style={styles.row}>
@@ -250,7 +217,6 @@ export default function AddMarket() {
             <Text style={styles.label}>City</Text>
             <TextInput
               style={styles.input}
-              placeholder="e.g. Sangamner"
               value={city}
               onChangeText={setCity}
             />
@@ -266,12 +232,10 @@ export default function AddMarket() {
           </View>
         </View>
 
-        {/* ⭐ NEW VILLAGE BOX */}
         <View style={styles.inputBox}>
           <Text style={styles.label}>Village</Text>
           <TextInput
             style={styles.input}
-            placeholder="e.g. Manoli"
             value={village}
             onChangeText={setVillage}
           />
@@ -279,18 +243,11 @@ export default function AddMarket() {
 
         <View style={styles.inputBox}>
           <Text style={styles.label}>Country</Text>
-          <TextInput
-            style={styles.input}
-            value={country}
-            editable={false}
-          />
+          <TextInput style={styles.input} value={country} editable={false} />
         </View>
 
-        {/* ---- Upload + Submit (unchanged) ---- */}
-        {/* (your image upload and submit code remains the same here) */}
-
         <TouchableOpacity
-          style={[styles.submitBtn, submitting && { opacity: 0.6 }]}
+          style={styles.submitBtn}
           onPress={handleSubmit}
           disabled={submitting}
         >
@@ -300,23 +257,29 @@ export default function AddMarket() {
             <Text style={styles.submitText}>Add Listing</Text>
           )}
         </TouchableOpacity>
-
       </ScrollView>
     </View>
   );
 }
 
-/* ------- STYLES (same) ------- */
+/* ---------- STYLES ---------- */
 const styles = StyleSheet.create({
-  container: { padding: 16, backgroundColor: "#F9FAFB" },
+  container: {
+    padding: 16,
+    backgroundColor: "#F9FAFB",
+    maxWidth: 700,
+    alignSelf: "center",
+    width: "100%",
+  },
   stickyHeader: {
     position: "absolute",
-    top: 0, left: 0, right: 0,
-    zIndex: 999,
+    top: 0,
+    left: 0,
+    right: 0,
     backgroundColor: "#fff",
     borderBottomWidth: 1,
     borderColor: "#E5E7EB",
-    elevation: 4,
+    zIndex: 10,
   },
   stickyHeaderInner: {
     height: 56,
@@ -330,13 +293,25 @@ const styles = StyleSheet.create({
     backgroundColor: "#E8F5E9",
     borderRadius: 8,
   },
-  headerCenter: { flexDirection: "row", alignItems: "center", gap: 8 },
-  headerTitle: { fontSize: 20, fontWeight: "700", color: "#2E7D32" },
-
-  sectionTitle: { fontWeight: "700", color: "#111827", marginBottom: 6 },
-  row: { flexDirection: "row" },
-  inputBox: { marginBottom: 10 },
-  label: { marginBottom: 6, fontWeight: "600", color: "#374151" },
+  headerTitle: {
+    fontSize: 20,
+    fontWeight: "700",
+    color: "#2E7D32",
+  },
+  sectionTitle: {
+    fontWeight: "700",
+    marginBottom: 6,
+  },
+  row: {
+    flexDirection: "row",
+  },
+  inputBox: {
+    marginBottom: 10,
+  },
+  label: {
+    marginBottom: 6,
+    fontWeight: "600",
+  },
   input: {
     borderWidth: 1,
     borderColor: "#D1D5DB",
@@ -344,19 +319,6 @@ const styles = StyleSheet.create({
     padding: 10,
     backgroundColor: "#fff",
   },
-
-  uploadBtn: {
-    flexDirection: "row",
-    justifyContent: "center",
-    alignItems: "center",
-    gap: 8,
-    backgroundColor: "#2E7D32",
-    paddingVertical: 10,
-    borderRadius: 10,
-    marginTop: 8,
-  },
-  uploadText: { color: "#fff", fontWeight: "700" },
-
   submitBtn: {
     backgroundColor: "#2E7D32",
     paddingVertical: 12,
@@ -364,5 +326,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginTop: 10,
   },
-  submitText: { color: "#fff", fontWeight: "700" },
+  submitText: {
+    color: "#fff",
+    fontWeight: "700",
+  },
 });

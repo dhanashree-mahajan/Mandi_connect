@@ -1,232 +1,311 @@
+import { MaterialCommunityIcons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import axios from "axios";
+import { useRouter } from "expo-router";
+import { StatusBar } from "expo-status-bar";
 import { useEffect, useState } from "react";
 import {
-  Alert,
+  ActivityIndicator,
+  ScrollView,
   StyleSheet,
   Text,
-  TextInput,
-  TouchableOpacity
+  TouchableOpacity,
+  View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
 
 const BASE_URL = "https://mandiconnect.onrender.com";
 
+/* ---------- TYPES ---------- */
+type BuyerProfileType = {
+  id: string;
+  name: string;
+  email: string;
+  mobile: string;
+  companyName: string;
+  companyAddress?: {
+    city?: string;
+    state?: string;
+    country?: string;
+  };
+  preferredCrops?: string[];
+  verified?: boolean;
+};
+
 export default function BuyerProfile() {
-  const [buyerId, setBuyerId] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+  const router = useRouter();
+  const insets = useSafeAreaInsets();
 
-  const [profile, setProfile] = useState({
-    name: "",
-    email: "",
-    mobile: "",
-    companyName: "",
-    city: "",
-    state: "",
-    country: "",
-  });
-
-  /* ---------- Helpers ---------- */
-
-  const getAuthHeaders = async () => {
-    const token = await AsyncStorage.getItem("token");
-    if (!token) throw new Error("Missing token");
-    return { Authorization: `Bearer ${token}` };
-  };
-
-  /* ---------- Load profile ---------- */
-
-  const loadProfile = async () => {
-    try {
-      setLoading(true);
-      const id = await AsyncStorage.getItem("buyerId");
-      if (!id) return;
-
-      setBuyerId(id);
-
-      const headers = await getAuthHeaders();
-      const res = await axios.get(`${BASE_URL}/buyer/${id}`, { headers });
-
-      const b = res.data;
-
-      setProfile({
-        name: b.name || "",
-        email: b.email || "",
-        mobile: b.mobile || "",
-        companyName: b.companyName || "",
-        city: b.companyAddress?.city || "",
-        state: b.companyAddress?.state || "",
-        country: b.companyAddress?.country || "",
-      });
-    } catch (err) {
-      console.log("Failed to load profile", err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  /* ---------- Update profile ---------- */
-
-  const updateProfile = async () => {
-    try {
-      if (!buyerId) return;
-
-      const headers = await getAuthHeaders();
-
-      const payload = {
-        name: profile.name,
-        mobile: profile.mobile,
-        companyName: profile.companyName,
-        companyAddress: {
-          city: profile.city,
-          state: profile.state,
-          country: profile.country,
-        },
-      };
-
-      await axios.patch(`${BASE_URL}/buyer/update/${buyerId}`, payload, {
-        headers,
-      });
-
-      Alert.alert("Success", "Profile updated successfully");
-    } catch (err) {
-      console.log("Failed to update profile", err);
-      Alert.alert("Error", "Failed to update profile");
-    }
-  };
-
-  /* ---------- Logout ---------- */
-
-  const logout = async () => {
-    await AsyncStorage.clear();
-    Alert.alert("Logged out");
-  };
+  const [buyer, setBuyer] = useState<BuyerProfileType | null>(null);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     loadProfile();
   }, []);
 
-  /* ---------- UI ---------- */
+  const loadProfile = async () => {
+    try {
+      setLoading(true);
+      setError(null);
 
+      const token = await AsyncStorage.getItem("token");
+      const loginEmail = await AsyncStorage.getItem("loginEmail");
+      const cachedProfile = await AsyncStorage.getItem("buyerProfile");
+
+      if (!token || !loginEmail) {
+        setError("Session expired. Please login again.");
+        return;
+      }
+
+      // Use cached profile first
+      if (cachedProfile) {
+        setBuyer(JSON.parse(cachedProfile));
+        return;
+      }
+
+      // Backend limitation: get all buyers
+      const res = await axios.get(`${BASE_URL}/buyer/getAll`);
+
+      const matchedBuyer = res.data.find(
+        (b: any) => b.Email?.toLowerCase() === loginEmail.toLowerCase(),
+      );
+
+      if (!matchedBuyer) {
+        setError("Buyer profile not found.");
+        return;
+      }
+
+      const mappedBuyer: BuyerProfileType = {
+        id: String(matchedBuyer.id || matchedBuyer._id),
+        name: matchedBuyer.Name,
+        email: matchedBuyer.Email,
+        mobile: matchedBuyer.Mobile,
+        companyName: matchedBuyer["Company Name"],
+        companyAddress: {
+          city: matchedBuyer["Company Address"]?.City,
+          state: matchedBuyer["Company Address"]?.State,
+          country: matchedBuyer["Company Address"]?.Country,
+        },
+        preferredCrops: matchedBuyer.PreferredCrops,
+        verified: matchedBuyer.verified,
+      };
+
+      await AsyncStorage.setItem("buyerProfile", JSON.stringify(mappedBuyer));
+
+      setBuyer(mappedBuyer);
+    } catch (err) {
+      console.log("Profile load error:", err);
+      setError("Unable to load profile");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const logout = async () => {
+    await AsyncStorage.multiRemove([
+      "token",
+      "loginEmail",
+      "buyerProfile",
+      "role",
+    ]);
+    router.replace("/auth/buyerlogin");
+  };
+
+  /* ---------- LOADING ---------- */
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.center}>
+        <StatusBar style="dark" />
+        <ActivityIndicator size="large" color="#2E7D32" />
+      </SafeAreaView>
+    );
+  }
+
+  /* ---------- ERROR ---------- */
+  if (error) {
+    return (
+      <SafeAreaView style={styles.center}>
+        <StatusBar style="dark" />
+        <Text style={{ color: "#DC2626", marginBottom: 12 }}>{error}</Text>
+        <TouchableOpacity onPress={logout}>
+          <Text style={{ color: "#2563EB", fontWeight: "700" }}>
+            Go to Login
+          </Text>
+        </TouchableOpacity>
+      </SafeAreaView>
+    );
+  }
+
+  /* ---------- UI ---------- */
   return (
     <SafeAreaView style={styles.container}>
-      <Text style={styles.title}>👤 My Profile</Text>
+      <StatusBar style="dark" />
 
-      <TextInput
-        style={styles.input}
-        placeholder="Name"
-        value={profile.name}
-        onChangeText={(t) => setProfile({ ...profile, name: t })}
-      />
-
-      <TextInput
-        style={[styles.input, styles.disabled]}
-        value={profile.email}
-        editable={false}
-      />
-
-      <TextInput
-        style={styles.input}
-        placeholder="Mobile"
-        keyboardType="phone-pad"
-        value={profile.mobile}
-        onChangeText={(t) => setProfile({ ...profile, mobile: t })}
-      />
-
-      <TextInput
-        style={styles.input}
-        placeholder="Company Name"
-        value={profile.companyName}
-        onChangeText={(t) => setProfile({ ...profile, companyName: t })}
-      />
-
-      <TextInput
-        style={styles.input}
-        placeholder="City"
-        value={profile.city}
-        onChangeText={(t) => setProfile({ ...profile, city: t })}
-      />
-
-      <TextInput
-        style={styles.input}
-        placeholder="State"
-        value={profile.state}
-        onChangeText={(t) => setProfile({ ...profile, state: t })}
-      />
-
-      <TextInput
-        style={styles.input}
-        placeholder="Country"
-        value={profile.country}
-        onChangeText={(t) => setProfile({ ...profile, country: t })}
-      />
-
-      <TouchableOpacity
-        style={styles.primaryBtn}
-        onPress={updateProfile}
-        disabled={loading}
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingBottom: insets.bottom + 40 }}
       >
-        <Text style={styles.primaryBtnText}>Update Profile</Text>
-      </TouchableOpacity>
+        {/* HEADER */}
+        <View style={[styles.header, { paddingTop: insets.top + 16 }]}>
+          <MaterialCommunityIcons
+            name="account-circle"
+            size={72}
+            color="#2E7D32"
+          />
+          <Text style={styles.name}>{buyer?.companyName || "-"}</Text>
+          <Text style={styles.subText}>
+            Buyer · {buyer?.companyAddress?.city || "-"}
+          </Text>
+        </View>
 
-      <TouchableOpacity style={styles.logoutBtn} onPress={logout}>
-        <Text style={styles.logoutText}>Logout</Text>
-      </TouchableOpacity>
+        {/* BUSINESS DETAILS */}
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>🏢 Business Details</Text>
+
+          <Info label="Owner Name" value={buyer?.name} />
+          <Info label="Business Name" value={buyer?.companyName} />
+          <Info
+            label="Location"
+            value={`${buyer?.companyAddress?.city || "-"}, ${
+              buyer?.companyAddress?.state || "-"
+            }`}
+          />
+          <Info label="Mobile" value={buyer?.mobile} />
+          <Info label="Email" value={buyer?.email} />
+          <Info
+            label="Verification"
+            value={buyer?.verified ? "Verified ✅" : "Not Verified ❌"}
+          />
+        </View>
+
+        {/* ACTIVITY */}
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>📊 My Activity</Text>
+
+          <TouchableOpacity
+            style={styles.rowItem}
+            onPress={() => router.push("/buyer-demands")}
+          >
+            <Text style={styles.rowText}>Posted Demands</Text>
+            <MaterialCommunityIcons
+              name="chevron-right"
+              size={22}
+              color="#6B7280"
+            />
+          </TouchableOpacity>
+        </View>
+
+        {/* SETTINGS */}
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>⚙️ Settings</Text>
+
+          <TouchableOpacity
+            style={[styles.rowItem, styles.logoutRow]}
+            onPress={logout}
+          >
+            <Text style={styles.logoutText}>Logout</Text>
+          </TouchableOpacity>
+        </View>
+      </ScrollView>
     </SafeAreaView>
   );
 }
 
-/* ---------- Styles ---------- */
+/* ---------- INFO ROW ---------- */
+function Info({ label, value }: { label: string; value?: string | null }) {
+  return (
+    <View style={styles.infoRow}>
+      <Text style={styles.label}>{label}</Text>
+      <Text style={styles.value}>{value || "-"}</Text>
+    </View>
+  );
+}
 
+/* ---------- STYLES ---------- */
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#F9FAFB",
+  },
+
+  center: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
     padding: 16,
   },
 
-  title: {
-    fontSize: 22,
-    fontWeight: "800",
-    textAlign: "center",
-    marginBottom: 20,
-  },
-
-  input: {
+  header: {
+    alignItems: "center",
+    paddingBottom: 24,
     backgroundColor: "#fff",
-    borderRadius: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
     marginBottom: 12,
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
   },
 
-  disabled: {
-    backgroundColor: "#F3F4F6",
+  name: {
+    fontSize: 20,
+    fontWeight: "800",
+    marginTop: 8,
+    color: "#111827",
   },
 
-  primaryBtn: {
-    backgroundColor: "#2E7D32",
-    paddingVertical: 12,
-    borderRadius: 10,
-    alignItems: "center",
-    marginTop: 10,
+  subText: {
+    color: "#6B7280",
+    marginTop: 2,
   },
 
-  primaryBtnText: {
-    color: "#fff",
+  card: {
+    backgroundColor: "#fff",
+    marginHorizontal: 16,
+    marginBottom: 12,
+    borderRadius: 14,
+    padding: 16,
+  },
+
+  sectionTitle: {
+    fontSize: 16,
     fontWeight: "700",
-    fontSize: 15,
+    marginBottom: 12,
   },
 
-  logoutBtn: {
-    marginTop: 20,
+  infoRow: {
+    marginBottom: 8,
+  },
+
+  label: {
+    fontSize: 12,
+    color: "#6B7280",
+  },
+
+  value: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#111827",
+  },
+
+  rowItem: {
+    flexDirection: "row",
+    justifyContent: "space-between",
     alignItems: "center",
+    paddingVertical: 12,
+  },
+
+  rowText: {
+    fontSize: 15,
+    color: "#111827",
+  },
+
+  logoutRow: {
+    marginTop: 8,
   },
 
   logoutText: {
     color: "#DC2626",
     fontWeight: "700",
+    fontSize: 15,
   },
 });

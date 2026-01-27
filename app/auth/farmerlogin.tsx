@@ -2,159 +2,88 @@ import { MaterialCommunityIcons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import axios from "axios";
 import { useRouter } from "expo-router";
+import { StatusBar } from "expo-status-bar";
 import { useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   KeyboardAvoidingView,
   Platform,
-  SafeAreaView,
   ScrollView,
   Text,
   TextInput,
-  TextStyle,
   TouchableOpacity,
   View,
-  ViewStyle,
+  useWindowDimensions,
 } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context"; // ⭐ ADDED
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
 
-// Cross-platform alert
+/* ---------- ALERT ---------- */
 const showAlert = (title: string, message: string) => {
   if (Platform.OS === "web") {
     window.alert(`${title}\n${message}`);
   } else {
-    import("react-native").then(({ Alert }) => Alert.alert(title, message));
+    Alert.alert(title, message);
   }
 };
 
 export default function FarmerLogin() {
   const router = useRouter();
-  const insets = useSafeAreaInsets(); // ⭐ SAFEAREA HOOK
+  const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
+
+  const scale = width < 360 ? 0.9 : width > 420 ? 1.05 : 1;
 
   const [email, setEmail] = useState<string>("");
   const [password, setPassword] = useState<string>("");
   const [loading, setLoading] = useState<boolean>(false);
   const [showPassword, setShowPassword] = useState<boolean>(false);
 
-  const handleLogin = async () => {
+  const handleLogin = async (): Promise<void> => {
     if (!email || !password) {
-      showAlert("⚠️ Missing fields", "Please enter both email and password");
+      showAlert("Missing fields", "Please enter both email and password");
       return;
     }
 
     setLoading(true);
-
     try {
       const response = await axios.post(
         "https://mandiconnect.onrender.com/farmer/login",
-        { email: email.toLowerCase(), password },
-        { headers: { "Content-Type": "application/json" } }
+        {
+          email: email.toLowerCase(),
+          password,
+        },
+        { headers: { "Content-Type": "application/json" } },
       );
 
-      if (response.status === 200 && response.data.token) {
-        const token = response.data.token;
-        const userId =
-          response.data["User ID"] ||
-          response.data.UserID ||
-          response.data.userId ||
-          response.data.userid ||
-          "";
+      if (response.data?.token) {
+        await AsyncStorage.setItem("token", response.data.token);
+        await AsyncStorage.setItem("role", "farmer");
 
-        if (!userId) {
-          showAlert("⚠️ Login issue", "User ID not found in response.");
-          return;
-        }
-
-        await AsyncStorage.setItem("token", token);
-        await AsyncStorage.setItem("userId", userId);
-
-        showAlert("✅ Success", response.data.message || "Login successful!");
+        showAlert("Success", "Login successful");
         router.replace("/auth/farmer/farmer-dashboard");
-      } else {
-        showAlert("❌ Login failed", "Please try again.");
       }
-    } catch (error: any) {
-      const msg = error.response?.data;
+    } catch (error: unknown) {
+      const err = error as any;
       showAlert(
-        "⚠️ Login failed",
-        typeof msg === "string" ? msg : "Invalid email or password"
+        "Login Failed",
+        err.response?.data?.message || "Invalid email or password",
       );
     } finally {
       setLoading(false);
     }
   };
 
-  // Styles
-  const containerStyle: ViewStyle = {
-    flex: 1,
-    backgroundColor: "#f3f4f6",
-    paddingTop: insets.top + 10, // ⭐ FIXED SAFE AREA
-  };
-
-  const cardStyle: ViewStyle = {
-    width: "100%",
-    maxWidth: 400,
-    backgroundColor: "#fff",
-    borderRadius: 16,
-    padding: 20,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 5,
-  };
-
-  const inputContainerStyle: ViewStyle = {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#f9fafb",
-    borderWidth: 1,
-    borderColor: "#d1d5db",
-    borderRadius: 10,
-    paddingHorizontal: 12,
-  };
-
-  const labelStyle: TextStyle = {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#374151",
-    marginBottom: 4,
-  };
-
-  const buttonStyle: ViewStyle = {
-    backgroundColor: "#2E7D32",
-    paddingVertical: 14,
-    borderRadius: 10,
-    alignItems: "center",
-    flexDirection: "row",
-    justifyContent: "center",
-  };
-
-  const titleTextStyle: TextStyle = {
-    fontSize: 28,
-    fontWeight: "bold",
-    color: "#2E7D32",
-    textAlign: "center",
-    marginBottom: 8,
-  };
-
-  const subtitleTextStyle: TextStyle = {
-    fontSize: 20,
-    fontWeight: "600",
-    color: "#1f2937",
-    textAlign: "center",
-    marginBottom: 4,
-  };
-
-  const infoTextStyle: TextStyle = {
-    fontSize: 14,
-    color: "#4b5563",
-    textAlign: "center",
-    marginBottom: 16,
-  };
-
   return (
-    <SafeAreaView style={containerStyle}>
+    <SafeAreaView
+      edges={["top", "bottom"]}
+      style={{ flex: 1, backgroundColor: "#f3f4f6" }}
+    >
+      <StatusBar style="dark" />
+
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === "ios" ? "padding" : "height"}
@@ -164,59 +93,115 @@ export default function FarmerLogin() {
             flexGrow: 1,
             justifyContent: "center",
             alignItems: "center",
-            padding: 20,
+            paddingHorizontal: 20,
+            paddingBottom: insets.bottom + 20,
           }}
           keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
         >
-          <View style={cardStyle}>
-            <Text style={titleTextStyle}>🌾 Mandi Connect</Text>
-            <Text style={subtitleTextStyle}>Farmer Login</Text>
-            <Text style={infoTextStyle}>
-              Log in to access and manage your Farmer account.
+          <View
+            style={{
+              width: "100%",
+              maxWidth: 400,
+              backgroundColor: "#fff",
+              borderRadius: 16,
+              padding: 20,
+              elevation: 5,
+            }}
+          >
+            <Text
+              style={{
+                fontSize: 28 * scale,
+                fontWeight: "bold",
+                color: "#2E7D32",
+                textAlign: "center",
+              }}
+            >
+              🌾 Mandi Connect
+            </Text>
+
+            <Text
+              style={{
+                fontSize: 20 * scale,
+                fontWeight: "600",
+                textAlign: "center",
+                marginBottom: 16,
+              }}
+            >
+              Farmer Login
             </Text>
 
             {/* Email */}
-            <View style={{ marginBottom: 12, width: "100%" }}>
-              <Text style={labelStyle}>Email</Text>
-              <View style={inputContainerStyle}>
-                <MaterialCommunityIcons name="email-outline" size={20} color="#6b7280" />
+            <View style={{ marginBottom: 12 }}>
+              <Text style={{ fontSize: 14 * scale, fontWeight: "600" }}>
+                Email
+              </Text>
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  borderWidth: 1,
+                  borderRadius: 10,
+                  paddingHorizontal: 12,
+                  marginTop: 4,
+                }}
+              >
+                <MaterialCommunityIcons
+                  name="email-outline"
+                  size={20}
+                  color="#6b7280"
+                />
                 <TextInput
                   style={{
                     flex: 1,
                     paddingVertical: 12,
                     paddingHorizontal: 8,
-                    fontSize: 16,
-                    color: "#1f2937",
+                    fontSize: 16 * scale,
                   }}
-                  placeholder="Enter email"
-                  placeholderTextColor="#6b7280"
+                  placeholder="Enter your email"
+                  autoCapitalize="none"
+                  keyboardType="email-address"
                   value={email}
                   onChangeText={setEmail}
-                  keyboardType="email-address"
-                  autoCapitalize="none"
                 />
               </View>
             </View>
 
             {/* Password */}
-            <View style={{ marginBottom: 12, width: "100%" }}>
-              <Text style={labelStyle}>Password</Text>
-              <View style={inputContainerStyle}>
-                <MaterialCommunityIcons name="lock-outline" size={20} color="#6b7280" />
+            <View style={{ marginBottom: 8 }}>
+              <Text style={{ fontSize: 14 * scale, fontWeight: "600" }}>
+                Password
+              </Text>
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  borderWidth: 1,
+                  borderRadius: 10,
+                  paddingHorizontal: 12,
+                  marginTop: 4,
+                }}
+              >
+                <MaterialCommunityIcons
+                  name="lock-outline"
+                  size={20}
+                  color="#6b7280"
+                />
                 <TextInput
                   style={{
                     flex: 1,
                     paddingVertical: 12,
                     paddingHorizontal: 8,
-                    fontSize: 16,
-                    color: "#1f2937",
+                    fontSize: 16 * scale,
                   }}
-                  placeholder="Enter password"
+                  placeholder="Enter your password"
                   secureTextEntry={!showPassword}
                   value={password}
                   onChangeText={setPassword}
                 />
-                <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
+                <TouchableOpacity
+                  onPress={() => setShowPassword(!showPassword)}
+                >
                   <MaterialCommunityIcons
                     name={showPassword ? "eye-outline" : "eye-off-outline"}
                     size={20}
@@ -227,20 +212,71 @@ export default function FarmerLogin() {
             </View>
 
             {/* Forgot Password */}
-            <TouchableOpacity style={{ alignSelf: "flex-end", marginBottom: 16 }}>
-              <Text style={{ color: "#2E7D32", fontSize: 14 }}>Forgot password?</Text>
+            <TouchableOpacity
+              onPress={() => router.push("/auth/forgot-password")}
+              style={{ alignSelf: "flex-end", marginBottom: 16 }}
+            >
+              <Text
+                style={{
+                  color: "#2E7D32",
+                  fontSize: 13 * scale,
+                  fontWeight: "600",
+                }}
+              >
+                Forgot Password?
+              </Text>
             </TouchableOpacity>
 
             {/* Login Button */}
-            <TouchableOpacity onPress={handleLogin} disabled={loading} style={buttonStyle}>
-              {loading ? <ActivityIndicator color="#fff" /> : <Text style={{ color: "#fff", fontWeight: "600", fontSize: 16 }}>Sign In</Text>}
+            <TouchableOpacity
+              onPress={handleLogin}
+              disabled={loading}
+              style={{
+                backgroundColor: "#2E7D32",
+                paddingVertical: 14,
+                borderRadius: 10,
+                alignItems: "center",
+              }}
+            >
+              {loading ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text
+                  style={{
+                    color: "#fff",
+                    fontSize: 16 * scale,
+                    fontWeight: "600",
+                  }}
+                >
+                  Sign In
+                </Text>
+              )}
             </TouchableOpacity>
 
-            {/* Signup */}
-            <View style={{ flexDirection: "row", justifyContent: "center", marginTop: 12 }}>
-              <Text style={{ color: "#4b5563" }}>Don’t have an account? </Text>
-              <TouchableOpacity onPress={() => router.push("/auth/farmersignup")}>
-                <Text style={{ color: "#2E7D32", fontWeight: "600", marginLeft: 4 }}>Sign up</Text>
+            {/* Sign Up */}
+            <View
+              style={{
+                flexDirection: "row",
+                justifyContent: "center",
+                marginTop: 16,
+              }}
+            >
+              <Text style={{ fontSize: 14 * scale }}>
+                Don’t have an account?
+              </Text>
+              <TouchableOpacity
+                onPress={() => router.push("/auth/farmersignup")}
+              >
+                <Text
+                  style={{
+                    fontSize: 14 * scale,
+                    color: "#2E7D32",
+                    fontWeight: "600",
+                    marginLeft: 6,
+                  }}
+                >
+                  Sign Up
+                </Text>
               </TouchableOpacity>
             </View>
           </View>

@@ -3,20 +3,25 @@ import axios from "axios";
 import { useRouter } from "expo-router";
 import { useState } from "react";
 import {
+  ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
   Platform,
-  SafeAreaView,
   ScrollView,
-  StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
   View,
+  useWindowDimensions,
 } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context"; // ⭐ ADDED
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
 
-// Cross-platform alert
+const BASE_URL = "https://mandiconnect.onrender.com";
+
+/* ---------- ALERT ---------- */
 const showAlert = (title: string, message: string) => {
   if (Platform.OS === "web") {
     window.alert(`${title}\n${message}`);
@@ -25,6 +30,7 @@ const showAlert = (title: string, message: string) => {
   }
 };
 
+/* ---------- FORM TYPE ---------- */
 type BuyerForm = {
   name: string;
   email: string;
@@ -38,8 +44,11 @@ type BuyerForm = {
 };
 
 export default function BuyerSignUp() {
-  const insets = useSafeAreaInsets(); // ⭐ SAFE AREA HERE
   const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
+
+  const scale = width < 360 ? 0.9 : width > 420 ? 1.05 : 1;
 
   const [form, setForm] = useState<BuyerForm>({
     name: "",
@@ -56,145 +65,211 @@ export default function BuyerSignUp() {
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
-  const update = (key: keyof BuyerForm, value: string) =>
-    setForm({ ...form, [key]: value });
+  const update = (key: keyof BuyerForm, value: string) => {
+    setForm((prev) => ({ ...prev, [key]: value }));
+  };
 
   const handleSignUp = async () => {
+    const { name, email, mobile, password, companyName, city, state, country } =
+      form;
+
     if (
-      !form.name ||
-      !form.email ||
-      !form.mobile ||
-      !form.password ||
-      !form.companyName ||
-      !form.city ||
-      !form.state ||
-      !form.country
+      !name ||
+      !email ||
+      !mobile ||
+      !password ||
+      !companyName ||
+      !city ||
+      !state ||
+      !country
     ) {
-      showAlert("⚠️ Missing fields", "Please fill all required fields");
+      showAlert("Missing fields", "Please fill all required fields");
       return;
     }
 
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) {
-      showAlert("⚠️ Invalid email", "Please enter a valid email address");
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      showAlert("Invalid email", "Please enter a valid email");
       return;
     }
 
-    if (!/^\d{10}$/.test(form.mobile)) {
-      showAlert("⚠️ Invalid mobile", "Please enter a valid 10-digit mobile number");
+    if (!/^\d{10}$/.test(mobile)) {
+      showAlert("Invalid mobile", "Enter a valid 10-digit mobile number");
       return;
     }
 
     setLoading(true);
     try {
       const payload = {
-        Name: form.name,
-        Mobile: form.mobile,
-        Email: form.email.toLowerCase(),
-        Password: form.password,
-        "Company Name": form.companyName,
+        Name: name,
+        Email: email.toLowerCase().trim(),
+        Mobile: mobile,
+        Password: password,
+        "Company Name": companyName,
         "Company Address": {
-          City: form.city,
-          State: form.state,
-          Country: form.country,
+          City: city,
+          State: state,
+          Country: country,
         },
         PreferredCrops: form.preferredCrops
           ? form.preferredCrops.split(",").map((c) => c.trim())
           : [],
       };
 
-      const res = await axios.post(
-        "https://mandiconnect.onrender.com/buyer/signup",
-        payload,
-        { headers: { "Content-Type": "application/json" } }
-      );
+      const res = await axios.post(`${BASE_URL}/buyer/signup`, payload, {
+        headers: { "Content-Type": "application/json" },
+      });
 
-      showAlert("✅ Success", res.data.message || "Buyer registered successfully!");
-      router.replace("/auth/buyerlogin");
-    } catch (error: any) {
       showAlert(
-        "⚠️ Registration failed",
-        error.response?.data?.message || "Something went wrong"
+        "Success",
+        res.data?.message || "Buyer registered successfully",
+      );
+      router.replace("/auth/buyerlogin");
+    } catch (err: any) {
+      showAlert(
+        "Registration failed",
+        err.response?.data?.message || "Something went wrong",
       );
     } finally {
       setLoading(false);
     }
   };
 
-  const inputs: {
-    key: keyof BuyerForm;
-    placeholder: string;
-    secure?: boolean;
-    keyboardType?: any;
-  }[] = [
-    { key: "name", placeholder: "Full Name" },
-    { key: "email", placeholder: "Email", keyboardType: "email-address" },
-    { key: "password", placeholder: "Password", secure: true },
-    { key: "mobile", placeholder: "Mobile Number", keyboardType: "phone-pad" },
-    { key: "companyName", placeholder: "Company Name" },
-    { key: "city", placeholder: "City" },
-    { key: "state", placeholder: "State" },
-    { key: "country", placeholder: "Country" },
-    { key: "preferredCrops", placeholder: "Preferred Crops (comma-separated)" },
-  ];
-
   return (
-    <SafeAreaView
-      style={[
-        styles.container,
-        { paddingTop: insets.top + 10 } // ⭐ FIXED SAFE AREA
-      ]}
-    >
+    <SafeAreaView style={{ flex: 1, backgroundColor: "#f3f4f6" }}>
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === "ios" ? "padding" : "height"}
       >
         <ScrollView
-          contentContainerStyle={styles.scrollContent}
+          contentContainerStyle={{
+            flexGrow: 1,
+            justifyContent: "center",
+            alignItems: "center",
+            padding: 20,
+            paddingBottom: insets.bottom + 20,
+          }}
           keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
         >
-          <View style={styles.card}>
-            <Text style={styles.headerTitle}>🌾 Mandi Connect</Text>
-            <Text style={styles.subTitle}>Buyer SignUp</Text>
-            <Text style={styles.description}>
-              Sign up to access and stay connected with the mandi network.
+          <View
+            style={{
+              width: "100%",
+              maxWidth: 400,
+              backgroundColor: "#fff",
+              borderRadius: 16,
+              padding: 20,
+            }}
+          >
+            {/* HEADER */}
+            <Text
+              style={{
+                fontSize: 28 * scale,
+                fontWeight: "bold",
+                color: "#2E7D32",
+                textAlign: "center",
+              }}
+            >
+              🌾 Mandi Connect
             </Text>
 
-            {inputs.map((item) => (
-              <View key={item.key} style={{ marginBottom: 12, width: "100%" }}>
-                <Text style={styles.label}>{item.placeholder}</Text>
-                <View style={styles.inputContainer}>
+            <Text
+              style={{
+                fontSize: 18 * scale,
+                fontWeight: "600",
+                textAlign: "center",
+                marginBottom: 16,
+              }}
+            >
+              Buyer Sign Up
+            </Text>
+
+            {/* INPUTS */}
+            {[
+              { key: "name", label: "Full Name", icon: "account-outline" },
+              {
+                key: "email",
+                label: "Email Address",
+                icon: "email-outline",
+                keyboardType: "email-address",
+              },
+              {
+                key: "mobile",
+                label: "Mobile Number",
+                icon: "cellphone",
+                keyboardType: "phone-pad",
+              },
+              {
+                key: "password",
+                label: "Password",
+                icon: "lock-outline",
+                secure: true,
+              },
+              {
+                key: "companyName",
+                label: "Company Name",
+                icon: "office-building-outline",
+              },
+              { key: "city", label: "City", icon: "map-marker-outline" },
+              { key: "state", label: "State", icon: "map-outline" },
+              { key: "country", label: "Country", icon: "flag-outline" },
+              {
+                key: "preferredCrops",
+                label: "Preferred Crops",
+                icon: "leaf-outline",
+              },
+            ].map((item: any) => (
+              <View key={item.key} style={{ marginBottom: 12 }}>
+                <Text
+                  style={{
+                    fontSize: 14 * scale,
+                    fontWeight: "600",
+                    marginBottom: 4,
+                  }}
+                >
+                  {item.label}
+                </Text>
+
+                <View
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    borderWidth: 1,
+                    borderColor: "#d1d5db",
+                    borderRadius: 10,
+                    paddingHorizontal: 12,
+                  }}
+                >
                   <MaterialCommunityIcons
-                    name={
-                      item.key === "password"
-                        ? showPassword
-                          ? "lock-open-outline"
-                          : "lock-outline"
-                        : item.key === "email"
-                        ? "email-outline"
-                        : item.key === "mobile"
-                        ? "cellphone"
-                        : "account-outline"
-                    }
+                    name={item.icon}
                     size={20}
                     color="#6b7280"
+                    style={{ marginRight: 6 }}
                   />
+
                   <TextInput
-                    style={styles.input}
-                    placeholder={item.placeholder}
-                    placeholderTextColor="#6b7280"
+                    placeholder={item.label}
                     secureTextEntry={item.secure && !showPassword}
                     keyboardType={item.keyboardType}
-                    value={form[item.key]}
-                    onChangeText={(text) => update(item.key, text)}
                     autoCapitalize={
                       item.key === "email" || item.key === "password"
                         ? "none"
                         : "sentences"
                     }
+                    style={{
+                      flex: 1,
+                      paddingVertical: 12,
+                      fontSize: 16 * scale,
+                    }}
+                    value={form[item.key as keyof BuyerForm]}
+                    onChangeText={(text) =>
+                      update(item.key as keyof BuyerForm, text)
+                    }
                   />
 
                   {item.key === "password" && (
-                    <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
+                    <TouchableOpacity
+                      onPress={() => setShowPassword((p) => !p)}
+                    >
                       <MaterialCommunityIcons
                         name={showPassword ? "eye-outline" : "eye-off-outline"}
                         size={20}
@@ -206,16 +281,56 @@ export default function BuyerSignUp() {
               </View>
             ))}
 
-            <TouchableOpacity onPress={handleSignUp} disabled={loading} style={styles.button}>
-              <Text style={styles.buttonText}>
-                {loading ? "Signing Up..." : "Sign Up"}
-              </Text>
+            {/* SUBMIT */}
+            <TouchableOpacity
+              onPress={handleSignUp}
+              disabled={loading}
+              style={{
+                backgroundColor: "#2E7D32",
+                paddingVertical: 14,
+                borderRadius: 10,
+                alignItems: "center",
+                marginTop: 10,
+                opacity: loading ? 0.7 : 1,
+              }}
+            >
+              {loading ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text
+                  style={{
+                    color: "#fff",
+                    fontSize: 16 * scale,
+                    fontWeight: "600",
+                  }}
+                >
+                  Sign Up
+                </Text>
+              )}
             </TouchableOpacity>
 
-            <View style={styles.loginContainer}>
-              <Text style={{ color: "#4b5563" }}>Already have an account? </Text>
+            {/* LOGIN LINK */}
+            <View
+              style={{
+                flexDirection: "row",
+                justifyContent: "center",
+                marginTop: 16,
+              }}
+            >
+              <Text style={{ fontSize: 14 * scale }}>
+                Already have an account?
+              </Text>
               <TouchableOpacity onPress={() => router.push("/auth/buyerlogin")}>
-                <Text style={styles.loginText}>Login</Text>
+                <Text
+                  style={{
+                    fontSize: 14 * scale,
+                    color: "#2E7D32",
+                    fontWeight: "600",
+                    marginLeft: 6,
+                  }}
+                >
+                  Login
+                </Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -224,93 +339,3 @@ export default function BuyerSignUp() {
     </SafeAreaView>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#f3f4f6" },
-
-  scrollContent: {
-    flexGrow: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 20,
-  },
-
-  card: {
-    width: "90%",
-    maxWidth: 400,
-    backgroundColor: "#fff",
-    borderRadius: 16,
-    padding: 20,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 5,
-  },
-
-  headerTitle: {
-    fontSize: 28,
-    fontWeight: "bold",
-    color: "#2E7D32",
-    textAlign: "center",
-    marginBottom: 8,
-  },
-
-  subTitle: {
-    fontSize: 20,
-    fontWeight: "600",
-    color: "#1f2937",
-    textAlign: "center",
-    marginBottom: 4,
-  },
-
-  description: {
-    fontSize: 14,
-    color: "#4b5563",
-    textAlign: "center",
-    marginBottom: 16,
-  },
-
-  label: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#374151",
-    marginBottom: 4,
-  },
-
-  inputContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#f9fafb",
-    borderWidth: 1,
-    borderColor: "#d1d5db",
-    borderRadius: 10,
-    paddingHorizontal: 12,
-  },
-
-  input: {
-    flex: 1,
-    paddingVertical: 12,
-    paddingHorizontal: 8,
-    fontSize: 16,
-    color: "#1f2937",
-  },
-
-  button: {
-    backgroundColor: "#2E7D32",
-    paddingVertical: 14,
-    borderRadius: 10,
-    alignItems: "center",
-    marginTop: 4,
-  },
-
-  buttonText: { color: "#fff", fontWeight: "600", fontSize: 16 },
-
-  loginContainer: {
-    flexDirection: "row",
-    justifyContent: "center",
-    marginTop: 12,
-  },
-
-  loginText: { color: "#2E7D32", fontWeight: "600", marginLeft: 4 },
-});

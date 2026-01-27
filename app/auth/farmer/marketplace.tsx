@@ -3,11 +3,13 @@ import axios from "axios";
 import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import {
+  ActivityIndicator,
   FlatList,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
+  useWindowDimensions,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -15,16 +17,36 @@ const BASE_URL = "https://mandiconnect.onrender.com";
 
 type TabType = "demands" | "listings";
 
+type BuyerDemand = {
+  _id?: string;
+  CropId?: string;
+  Market?: string;
+  ExpectedPrice?: { Value?: number };
+  RequiredQuantity?: { Value?: number; Unit?: string };
+  status?: string;
+};
+
+type FarmerListing = {
+  _id?: string;
+  crop?: { name?: string };
+  location?: { village?: string; city?: string };
+  price?: number;
+  quantity?: number;
+  unit?: string;
+  status?: string;
+};
+
 export default function FarmerMarketplace() {
   const router = useRouter();
+  const { width } = useWindowDimensions();
 
   const [activeTab, setActiveTab] = useState<TabType>("demands");
-  const [demands, setDemands] = useState<any[]>([]);
-  const [listings, setListings] = useState<any[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [demands, setDemands] = useState<BuyerDemand[]>([]);
+  const [listings, setListings] = useState<FarmerListing[]>([]);
+  const [loading, setLoading] = useState<boolean>(false);
   const [cropMap, setCropMap] = useState<Record<string, string>>({});
 
-  /* ---------- Helpers ---------- */
+  /* ---------- AUTH ---------- */
 
   const getAuthHeaders = async () => {
     const token = await AsyncStorage.getItem("token");
@@ -32,7 +54,7 @@ export default function FarmerMarketplace() {
     return { Authorization: `Bearer ${token}` };
   };
 
-  /* ---------- Load crops (ID → Name) ---------- */
+  /* ---------- LOAD CROPS ---------- */
 
   const loadCrops = async () => {
     try {
@@ -40,7 +62,7 @@ export default function FarmerMarketplace() {
       const res = await axios.get(`${BASE_URL}/getAllCrop`, { headers });
 
       const map: Record<string, string> = {};
-      res.data.forEach((c: any) => {
+      (res.data || []).forEach((c: any) => {
         map[c.id || c._id] = c.name;
       });
 
@@ -50,7 +72,7 @@ export default function FarmerMarketplace() {
     }
   };
 
-  /* ---------- Buyer Demands ---------- */
+  /* ---------- BUYER DEMANDS ---------- */
 
   const fetchBuyerDemands = async () => {
     try {
@@ -70,7 +92,7 @@ export default function FarmerMarketplace() {
     }
   };
 
-  /* ---------- Farmer Listings ---------- */
+  /* ---------- FARMER LISTINGS ---------- */
 
   const fetchMyListings = async () => {
     try {
@@ -91,7 +113,7 @@ export default function FarmerMarketplace() {
     }
   };
 
-  /* ---------- Init ---------- */
+  /* ---------- INIT ---------- */
 
   useEffect(() => {
     loadCrops();
@@ -105,47 +127,50 @@ export default function FarmerMarketplace() {
     }
   }, [activeTab]);
 
-  /* ---------- Render Buyer Demand ---------- */
+  /* ---------- RENDER BUYER DEMAND ---------- */
 
-  const renderDemand = ({ item }: any) => {
-    const cropName = cropMap[item.CropId] || "Unknown Crop";
+  const renderDemand = ({ item }: { item: BuyerDemand }) => {
+    const cropName = (item.CropId && cropMap[item.CropId]) || "Unknown Crop";
 
     return (
       <View style={styles.card}>
         <Text style={styles.crop}>{cropName}</Text>
-        <Text style={styles.market}>Market: {item.Market}</Text>
+        <Text style={styles.market}>Market: {item.Market || "-"}</Text>
 
         <View style={styles.row}>
-          <Text style={styles.price}>₹{item.ExpectedPrice?.Value}</Text>
+          <Text style={styles.price}>₹{item.ExpectedPrice?.Value ?? "-"}</Text>
           <Text style={styles.qty}>
-            {item.RequiredQuantity?.Value} {item.RequiredQuantity?.Unit}
+            {item.RequiredQuantity?.Value ?? "-"}{" "}
+            {item.RequiredQuantity?.Unit ?? ""}
           </Text>
         </View>
 
-        <Text style={styles.status}>Status: {item.status}</Text>
+        <Text style={styles.status}>Status: {item.status || "active"}</Text>
       </View>
     );
   };
 
-  /* ---------- Render My Listing ---------- */
+  /* ---------- RENDER LISTING ---------- */
 
-  const renderListing = ({ item }: any) => {
+  const renderListing = ({ item }: { item: FarmerListing }) => {
     const cropName = item.crop?.name || "Unknown Crop";
-    const location = `${item.location?.village}, ${item.location?.city}`;
+    const location = [item.location?.village, item.location?.city]
+      .filter(Boolean)
+      .join(", ");
 
     return (
       <View style={styles.card}>
         <Text style={styles.crop}>{cropName}</Text>
-        <Text style={styles.market}>{location}</Text>
+        <Text style={styles.market}>{location || "Unknown location"}</Text>
 
         <View style={styles.row}>
-          <Text style={styles.price}>₹{item.price}</Text>
+          <Text style={styles.price}>₹{item.price ?? "-"}</Text>
           <Text style={styles.qty}>
-            {item.quantity} {item.unit}
+            {item.quantity ?? "-"} {item.unit ?? ""}
           </Text>
         </View>
 
-        <Text style={styles.status}>Status: {item.status}</Text>
+        <Text style={styles.status}>Status: {item.status || "active"}</Text>
       </View>
     );
   };
@@ -154,47 +179,29 @@ export default function FarmerMarketplace() {
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* TITLE */}
       <Text style={styles.title}>🌾 Farmer Marketplace</Text>
 
       {/* TABS */}
       <View style={styles.tabRow}>
-        <TouchableOpacity
-          style={[
-            styles.tabButton,
-            activeTab === "demands" && styles.activeTab,
-          ]}
-          onPress={() => setActiveTab("demands")}
-        >
-          <Text
-            style={[
-              styles.tabText,
-              activeTab === "demands" && styles.activeTabText,
-            ]}
+        {(["demands", "listings"] as TabType[]).map((tab) => (
+          <TouchableOpacity
+            key={tab}
+            style={[styles.tabButton, activeTab === tab && styles.activeTab]}
+            onPress={() => setActiveTab(tab)}
           >
-            Buyer Demands
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[
-            styles.tabButton,
-            activeTab === "listings" && styles.activeTab,
-          ]}
-          onPress={() => setActiveTab("listings")}
-        >
-          <Text
-            style={[
-              styles.tabText,
-              activeTab === "listings" && styles.activeTabText,
-            ]}
-          >
-            My Listings
-          </Text>
-        </TouchableOpacity>
+            <Text
+              style={[
+                styles.tabText,
+                activeTab === tab && styles.activeTabText,
+              ]}
+            >
+              {tab === "demands" ? "Buyer Demands" : "My Listings"}
+            </Text>
+          </TouchableOpacity>
+        ))}
       </View>
 
-      {/* PRIMARY CTA */}
+      {/* CTA */}
       {activeTab === "listings" && (
         <TouchableOpacity
           style={styles.primaryBtn}
@@ -206,14 +213,16 @@ export default function FarmerMarketplace() {
 
       {/* LIST */}
       {loading ? (
-        <Text style={styles.loading}>Loading...</Text>
+        <ActivityIndicator
+          size="large"
+          color="#2E7D32"
+          style={{ marginTop: 30 }}
+        />
       ) : (
         <FlatList
           data={activeTab === "demands" ? demands : listings}
           renderItem={activeTab === "demands" ? renderDemand : renderListing}
-          keyExtractor={(item, index) =>
-            item._id?.toString() || index.toString()
-          }
+          keyExtractor={(item, index) => (item as any)._id || index.toString()}
           contentContainerStyle={{ paddingBottom: 120 }}
           showsVerticalScrollIndicator={false}
         />
@@ -222,7 +231,7 @@ export default function FarmerMarketplace() {
   );
 }
 
-/* ---------- Styles ---------- */
+/* ---------- STYLES ---------- */
 
 const styles = StyleSheet.create({
   container: {
@@ -278,11 +287,6 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontSize: 15,
     fontWeight: "700",
-  },
-
-  loading: {
-    textAlign: "center",
-    marginTop: 30,
   },
 
   card: {

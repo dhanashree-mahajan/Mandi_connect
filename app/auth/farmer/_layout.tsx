@@ -1,6 +1,9 @@
 import { MaterialCommunityIcons } from "@expo/vector-icons";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import type { BottomTabNavigationOptions } from "@react-navigation/bottom-tabs";
-import { Tabs } from "expo-router";
+import { Tabs, router } from "expo-router";
+import { useEffect, useState } from "react";
+import { ActivityIndicator, View } from "react-native";
 
 type TabBarIconProps =
   NonNullable<BottomTabNavigationOptions["tabBarIcon"]> extends (
@@ -10,6 +13,32 @@ type TabBarIconProps =
     : never;
 
 export default function FarmerLayout() {
+  const [checkingAuth, setCheckingAuth] = useState(true);
+
+  useEffect(() => {
+    const checkFarmerAuth = async () => {
+      const token = await AsyncStorage.getItem("token");
+      const role = await AsyncStorage.getItem("role");
+
+      if (!token || role !== "farmer") {
+        router.replace("/auth/farmerlogin");
+        return;
+      }
+
+      setCheckingAuth(false);
+    };
+
+    checkFarmerAuth();
+  }, []);
+
+  if (checkingAuth) {
+    return (
+      <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
+        <ActivityIndicator size="large" />
+      </View>
+    );
+  }
+
   return (
     <Tabs
       screenOptions={{

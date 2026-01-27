@@ -1,42 +1,54 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import axios from "axios";
 import { useFocusEffect, useRouter } from "expo-router";
+import { StatusBar } from "expo-status-bar";
 import { useCallback, useState } from "react";
 import {
   Alert,
   FlatList,
-  StatusBar,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
 
 export const options = { headerShown: false };
 
 const BASE_URL = "https://mandiconnect.onrender.com";
 
+/* ---------- TYPES ---------- */
+type DemandStatus = "active" | "fulfilled" | "cancelled";
+
+type Demand = {
+  id?: string;
+  _id?: string;
+  CropId: string;
+  Market: string;
+  ExpectedPrice: { Value: number };
+  RequiredQuantity: { Value: number; Unit: string };
+};
+
 export default function BuyerDashboard() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
 
-  const [activeTab, setActiveTab] = useState<
-    "active" | "fulfilled" | "cancelled"
-  >("active");
-  const [demands, setDemands] = useState<any[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [activeTab, setActiveTab] = useState<DemandStatus>("active");
+  const [demands, setDemands] = useState<Demand[]>([]);
+  const [loading, setLoading] = useState<boolean>(false);
   const [cropMap, setCropMap] = useState<Record<string, string>>({});
 
   /* ---------- Helpers ---------- */
-
   const getAuthHeaders = async () => {
-    const t = await AsyncStorage.getItem("token");
-    if (!t) throw new Error("Missing token");
-    return { Authorization: `Bearer ${t}` };
+    const token = await AsyncStorage.getItem("token");
+    if (!token) throw new Error("Missing token");
+    return { Authorization: `Bearer ${token}` };
   };
 
   /* ---------- Load crops ---------- */
-
   const loadCrops = async () => {
     try {
       const headers = await getAuthHeaders();
@@ -54,8 +66,7 @@ export default function BuyerDashboard() {
   };
 
   /* ---------- Fetch demands ---------- */
-
-  const fetchDemands = async (status: string) => {
+  const fetchDemands = async (status: DemandStatus) => {
     try {
       setLoading(true);
       const headers = await getAuthHeaders();
@@ -74,26 +85,7 @@ export default function BuyerDashboard() {
     }
   };
 
-  /* ---------- Update status ---------- */
-
-  const updateStatus = async (id: string, status: string) => {
-    try {
-      const headers = await getAuthHeaders();
-
-      await axios.patch(
-        `${BASE_URL}/marketplace/buyer/updateStatus/${id}`,
-        { status },
-        { headers },
-      );
-
-      fetchDemands(activeTab);
-    } catch (err) {
-      console.log("Failed to update status", err);
-    }
-  };
-
   /* ---------- Delete demand ---------- */
-
   const deleteDemand = async (id: string) => {
     Alert.alert(
       "Delete Demand",
@@ -120,7 +112,6 @@ export default function BuyerDashboard() {
   };
 
   /* ---------- Refresh on focus ---------- */
-
   useFocusEffect(
     useCallback(() => {
       loadCrops();
@@ -129,8 +120,7 @@ export default function BuyerDashboard() {
   );
 
   /* ---------- Render item ---------- */
-
-  const renderItem = ({ item }: any) => {
+  const renderItem = ({ item }: { item: Demand }) => {
     const cropName = cropMap[item.CropId] || "Unknown Crop";
 
     return (
@@ -145,11 +135,10 @@ export default function BuyerDashboard() {
           </Text>
         </View>
 
-        {/* ACTIONS */}
         <View style={styles.actionRow}>
           <TouchableOpacity
             style={[styles.actionBtn, styles.deleteBtn]}
-            onPress={() => deleteDemand(item.id)}
+            onPress={() => deleteDemand(item._id || item.id!)}
           >
             <Text style={styles.actionText}>Delete</Text>
           </TouchableOpacity>
@@ -159,19 +148,18 @@ export default function BuyerDashboard() {
   };
 
   /* ---------- UI ---------- */
-
   return (
-    <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="dark-content" />
+    <SafeAreaView style={[styles.container, { paddingTop: insets.top + 8 }]}>
+      <StatusBar style="dark" />
 
       <Text style={styles.title}>🌾 Buyer Dashboard</Text>
 
-      {/* TABS */}
+      {/* Tabs */}
       <View style={styles.tabRow}>
-        {["active", "fulfilled", "cancelled"].map((tab) => (
+        {(["active", "fulfilled", "cancelled"] as DemandStatus[]).map((tab) => (
           <TouchableOpacity
             key={tab}
-            onPress={() => setActiveTab(tab as any)}
+            onPress={() => setActiveTab(tab)}
             style={[styles.tabButton, activeTab === tab && styles.activeTab]}
           >
             <Text
@@ -192,8 +180,11 @@ export default function BuyerDashboard() {
         <FlatList
           data={demands}
           renderItem={renderItem}
-          keyExtractor={(item) => item._id}
-          contentContainerStyle={{ paddingBottom: 120 }}
+          keyExtractor={(item, index) =>
+            (item._id || item.id || index).toString()
+          }
+          contentContainerStyle={{ paddingBottom: insets.bottom + 80 }}
+          showsVerticalScrollIndicator={false}
         />
       )}
     </SafeAreaView>
@@ -201,12 +192,11 @@ export default function BuyerDashboard() {
 }
 
 /* ---------- Styles ---------- */
-
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#F9FAFB",
-    padding: 16,
+    paddingHorizontal: 16,
   },
 
   title: {
@@ -284,13 +274,8 @@ const styles = StyleSheet.create({
   actionBtn: {
     paddingVertical: 6,
     paddingHorizontal: 12,
-    backgroundColor: "#DCFCE7",
     borderRadius: 6,
     marginRight: 8,
-  },
-
-  cancelBtn: {
-    backgroundColor: "#FEE2E2",
   },
 
   deleteBtn: {

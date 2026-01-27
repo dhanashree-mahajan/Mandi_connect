@@ -2,13 +2,13 @@ import { MaterialCommunityIcons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import axios from "axios";
 import { useRouter } from "expo-router";
+import { StatusBar } from "expo-status-bar";
 import { useState } from "react";
 import {
   ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
   Platform,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
@@ -16,8 +16,12 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
 
+/* ---------- ALERT ---------- */
 const showAlert = (title: string, message: string) => {
   if (Platform.OS === "web") {
     window.alert(`${title}\n${message}`);
@@ -30,14 +34,14 @@ export default function BuyerLogin() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
 
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
+  const [email, setEmail] = useState<string>("");
+  const [password, setPassword] = useState<string>("");
+  const [loading, setLoading] = useState<boolean>(false);
+  const [showPassword, setShowPassword] = useState<boolean>(false);
 
-  const handleLogin = async () => {
+  const handleLogin = async (): Promise<void> => {
     if (!email || !password) {
-      showAlert("⚠️ Missing fields", "Please enter email and password");
+      showAlert("Missing fields", "Please enter email and password");
       return;
     }
 
@@ -49,62 +53,57 @@ export default function BuyerLogin() {
           Email: email,
           Password: password,
         },
-        { headers: { "Content-Type": "application/json" } }
+        { headers: { "Content-Type": "application/json" } },
       );
 
-      // Save JWT Token
-      if (res.data.token) {
+      if (res.data?.token) {
         await AsyncStorage.setItem("token", res.data.token);
+        await AsyncStorage.setItem("loginEmail", email.toLowerCase());
+        await AsyncStorage.setItem("role", "buyer");
+
+        showAlert("Success", "Login successful");
+        router.replace("/auth/buyer/buyerdashboard");
+      }
+    } catch (error: unknown) {
+      let message = "Invalid email or password";
+      const err = error as any;
+
+      if (err.response?.data) {
+        if (typeof err.response.data === "string") {
+          message = err.response.data;
+        } else if (typeof err.response.data.message === "string") {
+          message = err.response.data.message;
+        }
       }
 
-      // Save BuyerId
-      const buyerId = res.data.buyer?._id || res.data.buyer?.id;
-      if (buyerId) {
-        await AsyncStorage.setItem("buyerId", buyerId);
-      }
-
-      showAlert("✅ Success", res.data.message || "Login successful!");
-      router.replace("/auth/buyer/buyerdashboard");
-    } catch (error: any) {
-      if (error.response?.status === 401) {
-        showAlert("⚠️ Invalid Credentials", "Incorrect email or password.");
-      } else if (error.response?.status === 404) {
-        showAlert(
-          "⚠️ Account not found",
-          "Please check your email or sign up first."
-        );
-      } else {
-        showAlert(
-          "⚠️ Login Failed",
-          error.response?.data?.message || "Something went wrong."
-        );
-      }
+      showAlert("Login Failed", message);
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <SafeAreaView
-      style={[
-        styles.container,
-        { paddingTop: insets.top + 10 }
-      ]}
-    >
+    <SafeAreaView style={styles.container}>
+      <StatusBar style="dark" />
+
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === "ios" ? "padding" : "height"}
       >
         <ScrollView
-          contentContainerStyle={styles.scrollContent}
+          contentContainerStyle={[
+            styles.scrollContent,
+            { paddingBottom: insets.bottom + 20 },
+          ]}
           keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
         >
           <View style={styles.card}>
             <Text style={styles.headerTitle}>🌾 Mandi Connect</Text>
             <Text style={styles.subTitle}>Buyer Login</Text>
 
             {/* Email */}
-            <View style={{ marginBottom: 12, width: "100%" }}>
+            <View style={{ marginBottom: 12 }}>
               <Text style={styles.label}>Email</Text>
               <View style={styles.inputContainer}>
                 <MaterialCommunityIcons
@@ -124,7 +123,7 @@ export default function BuyerLogin() {
             </View>
 
             {/* Password */}
-            <View style={{ marginBottom: 12, width: "100%" }}>
+            <View style={{ marginBottom: 12 }}>
               <Text style={styles.label}>Password</Text>
               <View style={styles.inputContainer}>
                 <MaterialCommunityIcons
@@ -140,7 +139,9 @@ export default function BuyerLogin() {
                   onChangeText={setPassword}
                   autoCapitalize="none"
                 />
-                <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
+                <TouchableOpacity
+                  onPress={() => setShowPassword(!showPassword)}
+                >
                   <MaterialCommunityIcons
                     name={showPassword ? "eye-outline" : "eye-off-outline"}
                     size={20}
@@ -150,14 +151,14 @@ export default function BuyerLogin() {
               </View>
             </View>
 
-            {/* Forgot */}
+            {/* Forgot Password */}
             <TouchableOpacity
               onPress={() => router.push("/auth/buyer-forgot-password")}
             >
               <Text style={styles.forgotText}>Forgot Password?</Text>
             </TouchableOpacity>
 
-            {/* Login */}
+            {/* Login Button */}
             <TouchableOpacity
               onPress={handleLogin}
               disabled={loading}
@@ -172,9 +173,11 @@ export default function BuyerLogin() {
 
             {/* Signup */}
             <View style={styles.signupContainer}>
-              <Text style={{ color: "#4b5563" }}>Don't have an account? </Text>
-              <TouchableOpacity onPress={() => router.push("/auth/buyersignup")}>
-                <Text style={styles.signupText}>Sign Up</Text>
+              <Text style={{ color: "#4b5563" }}>Don't have an account?</Text>
+              <TouchableOpacity
+                onPress={() => router.push("/auth/buyersignup")}
+              >
+                <Text style={styles.signupText}> Sign Up</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -184,8 +187,12 @@ export default function BuyerLogin() {
   );
 }
 
+/* ---------- STYLES ---------- */
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#f3f4f6" },
+  container: {
+    flex: 1,
+    backgroundColor: "#f3f4f6",
+  },
 
   scrollContent: {
     flexGrow: 1,
@@ -200,10 +207,6 @@ const styles = StyleSheet.create({
     backgroundColor: "#fff",
     borderRadius: 16,
     padding: 20,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
     elevation: 5,
   },
 
@@ -218,7 +221,6 @@ const styles = StyleSheet.create({
   subTitle: {
     fontSize: 20,
     fontWeight: "600",
-    color: "#1f2937",
     textAlign: "center",
     marginBottom: 16,
   },
@@ -226,7 +228,6 @@ const styles = StyleSheet.create({
   label: {
     fontSize: 14,
     fontWeight: "600",
-    color: "#374151",
     marginBottom: 4,
   },
 
@@ -263,7 +264,11 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
 
-  buttonText: { color: "#fff", fontWeight: "600", fontSize: 16 },
+  buttonText: {
+    color: "#fff",
+    fontWeight: "600",
+    fontSize: 16,
+  },
 
   signupContainer: {
     flexDirection: "row",
@@ -271,5 +276,8 @@ const styles = StyleSheet.create({
     marginTop: 16,
   },
 
-  signupText: { color: "#2E7D32", fontWeight: "600", marginLeft: 4 },
+  signupText: {
+    color: "#2E7D32",
+    fontWeight: "600",
+  },
 });
