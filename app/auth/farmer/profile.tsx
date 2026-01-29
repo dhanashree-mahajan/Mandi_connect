@@ -1,174 +1,287 @@
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import axios from "axios";
 import { useRouter } from "expo-router";
+import { StatusBar } from "expo-status-bar";
+import { useEffect, useState } from "react";
 import {
+  ActivityIndicator,
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
 
-type Crop = string;
+const BASE_URL = "https://mandiconnect.onrender.com";
+
+/* ---------- TYPES ---------- */
+type FarmerProfileType = {
+  id: string;
+  name: string;
+  email: string;
+  mobile: string;
+  verified?: boolean;
+  farmerAddress?: {
+    city?: string;
+    state?: string;
+  };
+};
 
 export default function FarmerProfile() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
 
-  // 🔹 TEMP static data (can be API later)
-  const farmerName = "Ramesh Patil";
-  const location = "Sangamner";
-  const crops: Crop[] = ["Brinjal", "Onion", "Tomato"];
-  const verified = true;
+  const [farmer, setFarmer] = useState<FarmerProfileType | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [tab, setTab] = useState<"profile" | "activity">("profile");
+
+  useEffect(() => {
+    loadProfile();
+  }, []);
+
+  const loadProfile = async () => {
+    try {
+      const token = await AsyncStorage.getItem("token");
+      if (!token) return;
+
+      const res = await axios.get(`${BASE_URL}/farmer/getFarmers`);
+      const email = JSON.parse(atob(token.split(".")[1]))?.sub?.toLowerCase();
+
+      const match = res.data.find((f: any) => f.email?.toLowerCase() === email);
+
+      setFarmer({
+        id: match.id || match._id,
+        name: match.name,
+        email: match.email,
+        mobile: match.mobile,
+        verified: match.verified,
+        farmerAddress: {
+          city: match.farmerAddress?.city,
+          state: match.farmerAddress?.state,
+        },
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const logout = async () => {
-    await AsyncStorage.multiRemove(["token", "userId", "role"]);
-    router.replace("/login");
+    await AsyncStorage.multiRemove(["token", "role"]);
+    router.replace("/auth/farmerlogin");
   };
+
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.center}>
+        <ActivityIndicator size="large" color="#2E7D32" />
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView showsVerticalScrollIndicator={false}>
+      <StatusBar style="dark" />
+
+      <ScrollView contentContainerStyle={{ paddingBottom: insets.bottom + 40 }}>
         {/* HEADER */}
-        <View style={styles.header}>
-          <MaterialCommunityIcons
-            name="account-circle"
-            size={64}
-            color="#2E7D32"
-          />
-          <Text style={styles.name}>{farmerName}</Text>
-          <Text style={styles.subText}>Farmer · {location}</Text>
-        </View>
-
-        {/* CROPS GROWN */}
-        <View style={styles.card}>
-          <Text style={styles.sectionTitle}>🌱 Crops Grown</Text>
-          <View style={styles.chipsRow}>
-            {crops.map((crop) => (
-              <Text key={crop} style={styles.chip}>
-                {crop}
-              </Text>
-            ))}
+        <View style={[styles.header, { paddingTop: insets.top + 24 }]}>
+          <View style={styles.avatar}>
+            <MaterialCommunityIcons name="tractor" size={42} color="#2E7D32" />
           </View>
-        </View>
 
-        {/* MY ACTIVITY */}
-        <View style={styles.card}>
-          <Text style={styles.sectionTitle}>📊 My Activity</Text>
+          <Text style={styles.name}>{farmer?.name}</Text>
 
-          <TouchableOpacity
-            style={styles.rowItem}
-            activeOpacity={0.7}
-            onPress={() => router.push("/farmer/price-history")}
-          >
-            <Text style={styles.rowText}>Price History</Text>
-            <MaterialCommunityIcons
-              name="chevron-right"
-              size={22}
-              color="#6B7280"
-            />
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.rowItem}
-            activeOpacity={0.7}
-            onPress={() => router.push("/farmer/my-listings")}
-          >
-            <Text style={styles.rowText}>My Listings</Text>
-            <MaterialCommunityIcons
-              name="chevron-right"
-              size={22}
-              color="#6B7280"
-            />
-          </TouchableOpacity>
-        </View>
-
-        {/* VERIFICATION */}
-        <View style={styles.card}>
-          <Text style={styles.sectionTitle}>✅ Verification</Text>
-          <View style={styles.statusRow}>
-            <MaterialCommunityIcons
-              name={verified ? "check-decagram" : "alert-circle-outline"}
-              size={20}
-              color={verified ? "#2E7D32" : "#DC2626"}
-            />
-            <Text
-              style={[styles.verifiedText, !verified && { color: "#DC2626" }]}
-            >
-              {verified ? "Verified Farmer" : "Not Verified"}
+          <View style={styles.badge}>
+            <Text style={styles.badgeText}>
+              {farmer?.verified ? "Verified Farmer" : "Farmer"}
             </Text>
           </View>
+
+          <Text style={styles.location}>
+            {farmer?.farmerAddress?.city || "-"},{" "}
+            {farmer?.farmerAddress?.state || "-"}
+          </Text>
         </View>
 
-        {/* SETTINGS */}
-        <View style={styles.card}>
-          <Text style={styles.sectionTitle}>⚙️ Settings</Text>
-
-          <TouchableOpacity
-            style={styles.rowItem}
-            activeOpacity={0.7}
-            onPress={() => router.push("/farmer/edit-profile")}
-          >
-            <Text style={styles.rowText}>Edit Profile</Text>
-            <MaterialCommunityIcons
-              name="chevron-right"
-              size={22}
-              color="#6B7280"
-            />
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.rowItem}
-            activeOpacity={0.7}
-            onPress={() => router.push("/farmer/notification-settings")}
-          >
-            <Text style={styles.rowText}>Notification Preferences</Text>
-            <MaterialCommunityIcons
-              name="chevron-right"
-              size={22}
-              color="#6B7280"
-            />
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.rowItem, styles.logoutRow]}
-            activeOpacity={0.7}
-            onPress={logout}
-          >
-            <Text style={styles.logoutText}>Logout</Text>
-          </TouchableOpacity>
+        {/* TABS */}
+        <View style={styles.tabRow}>
+          <Tab
+            label="Profile"
+            active={tab === "profile"}
+            onPress={() => setTab("profile")}
+          />
+          <Tab
+            label="Activity"
+            active={tab === "activity"}
+            onPress={() => setTab("activity")}
+          />
         </View>
+
+        {/* PROFILE */}
+        {tab === "profile" && (
+          <>
+            <Card title="Personal Information">
+              <Info label="Full Name" value={farmer?.name} />
+              <Info label="Mobile Number" value={farmer?.mobile} />
+              <Info label="Email Address" value={farmer?.email} />
+              <Info
+                label="Location"
+                value={`${farmer?.farmerAddress?.city || "-"}, ${
+                  farmer?.farmerAddress?.state || "-"
+                }`}
+              />
+            </Card>
+
+            <Card title="Account">
+              <TouchableOpacity onPress={logout} style={styles.logoutBtn}>
+                <MaterialCommunityIcons
+                  name="logout"
+                  size={18}
+                  color="#DC2626"
+                />
+                <Text style={styles.logoutText}>Logout</Text>
+              </TouchableOpacity>
+            </Card>
+          </>
+        )}
+
+        {/* ACTIVITY */}
+        {tab === "activity" && (
+          <>
+            <Card title="Market Activity">
+              <Info label="Average Price" value="—" />
+              <Info label="Minimum Price" value="—" />
+              <Info label="Maximum Price" value="—" />
+            </Card>
+
+            <Card>
+              <TouchableOpacity
+                style={styles.row}
+                onPress={() => router.push("/farmer/my-entries")}
+              >
+                <Text style={styles.rowText}>View My Crop Entries</Text>
+                <MaterialCommunityIcons
+                  name="chevron-right"
+                  size={22}
+                  color="#9CA3AF"
+                />
+              </TouchableOpacity>
+            </Card>
+          </>
+        )}
       </ScrollView>
     </SafeAreaView>
   );
 }
 
-/* ---------------- STYLES ---------------- */
+/* ---------- SMALL COMPONENTS ---------- */
+
+function Tab({
+  label,
+  active,
+  onPress,
+}: {
+  label: string;
+  active: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      style={[styles.tab, active && styles.tabActive]}
+    >
+      <Text style={[styles.tabText, active && styles.tabTextActive]}>
+        {label}
+      </Text>
+    </TouchableOpacity>
+  );
+}
+
+function Card({
+  title,
+  children,
+}: {
+  title?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <View style={styles.card}>
+      {title && <Text style={styles.cardTitle}>{title}</Text>}
+      {children}
+    </View>
+  );
+}
+
+function Info({ label, value }: { label: string; value?: string }) {
+  return (
+    <View style={styles.infoRow}>
+      <Text style={styles.infoLabel}>{label}</Text>
+      <Text style={styles.infoValue}>{value || "-"}</Text>
+    </View>
+  );
+}
+
+/* ---------- STYLES ---------- */
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#F9FAFB",
-  },
+  container: { flex: 1, backgroundColor: "#F9FAFB" },
+  center: { flex: 1, justifyContent: "center", alignItems: "center" },
 
   header: {
     alignItems: "center",
-    paddingVertical: 24,
+    backgroundColor: "#fff",
+    paddingBottom: 24,
+    marginBottom: 12,
+  },
+
+  avatar: {
+    height: 72,
+    width: 72,
+    borderRadius: 36,
+    backgroundColor: "#ECFDF5",
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 8,
+  },
+
+  name: { fontSize: 20, fontWeight: "800", color: "#111827" },
+
+  badge: {
+    marginTop: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 999,
+    backgroundColor: "#DCFCE7",
+  },
+
+  badgeText: { color: "#166534", fontSize: 12, fontWeight: "700" },
+
+  location: { marginTop: 6, color: "#6B7280", fontSize: 13 },
+
+  tabRow: {
+    flexDirection: "row",
     backgroundColor: "#fff",
     marginBottom: 12,
   },
 
-  name: {
-    fontSize: 20,
-    fontWeight: "800",
-    marginTop: 8,
-    color: "#111827",
+  tab: {
+    flex: 1,
+    paddingVertical: 12,
+    alignItems: "center",
   },
 
-  subText: {
-    color: "#6B7280",
-    marginTop: 2,
+  tabActive: {
+    borderBottomWidth: 3,
+    borderBottomColor: "#2E7D32",
   },
+
+  tabText: { color: "#6B7280", fontWeight: "600" },
+  tabTextActive: { color: "#2E7D32" },
 
   card: {
     backgroundColor: "#fff",
@@ -178,53 +291,29 @@ const styles = StyleSheet.create({
     padding: 16,
   },
 
-  sectionTitle: {
-    fontSize: 16,
+  cardTitle: {
+    fontSize: 15,
     fontWeight: "700",
     marginBottom: 12,
-  },
-
-  chipsRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-  },
-
-  chip: {
-    backgroundColor: "#E5F4EA",
-    color: "#2E7D32",
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: 20,
-    marginRight: 8,
-    marginBottom: 8,
-    fontWeight: "600",
-  },
-
-  rowItem: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingVertical: 12,
-  },
-
-  rowText: {
-    fontSize: 15,
     color: "#111827",
   },
 
-  statusRow: {
+  infoRow: { marginBottom: 10 },
+  infoLabel: { fontSize: 12, color: "#6B7280" },
+  infoValue: { fontSize: 14, fontWeight: "600", color: "#111827" },
+
+  row: {
     flexDirection: "row",
+    justifyContent: "space-between",
     alignItems: "center",
   },
 
-  verifiedText: {
-    marginLeft: 8,
-    color: "#2E7D32",
-    fontWeight: "700",
-  },
+  rowText: { fontSize: 15, color: "#111827" },
 
-  logoutRow: {
-    marginTop: 8,
+  logoutBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
   },
 
   logoutText: {

@@ -31,7 +31,6 @@ type BuyerProfileType = {
     state?: string;
     country?: string;
   };
-  preferredCrops?: string[];
   verified?: boolean;
 };
 
@@ -40,8 +39,9 @@ export default function BuyerProfile() {
   const insets = useSafeAreaInsets();
 
   const [buyer, setBuyer] = useState<BuyerProfileType | null>(null);
-  const [loading, setLoading] = useState<boolean>(true);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<"profile" | "activity">("profile");
 
   useEffect(() => {
     loadProfile();
@@ -50,24 +50,14 @@ export default function BuyerProfile() {
   const loadProfile = async () => {
     try {
       setLoading(true);
-      setError(null);
-
       const token = await AsyncStorage.getItem("token");
       const loginEmail = await AsyncStorage.getItem("loginEmail");
-      const cachedProfile = await AsyncStorage.getItem("buyerProfile");
 
       if (!token || !loginEmail) {
         setError("Session expired. Please login again.");
         return;
       }
 
-      // Use cached profile first
-      if (cachedProfile) {
-        setBuyer(JSON.parse(cachedProfile));
-        return;
-      }
-
-      // Backend limitation: get all buyers
       const res = await axios.get(`${BASE_URL}/buyer/getAll`);
 
       const matchedBuyer = res.data.find(
@@ -79,7 +69,7 @@ export default function BuyerProfile() {
         return;
       }
 
-      const mappedBuyer: BuyerProfileType = {
+      setBuyer({
         id: String(matchedBuyer.id || matchedBuyer._id),
         name: matchedBuyer.Name,
         email: matchedBuyer.Email,
@@ -90,15 +80,9 @@ export default function BuyerProfile() {
           state: matchedBuyer["Company Address"]?.State,
           country: matchedBuyer["Company Address"]?.Country,
         },
-        preferredCrops: matchedBuyer.PreferredCrops,
         verified: matchedBuyer.verified,
-      };
-
-      await AsyncStorage.setItem("buyerProfile", JSON.stringify(mappedBuyer));
-
-      setBuyer(mappedBuyer);
-    } catch (err) {
-      console.log("Profile load error:", err);
+      });
+    } catch (e) {
       setError("Unable to load profile");
     } finally {
       setLoading(false);
@@ -106,12 +90,7 @@ export default function BuyerProfile() {
   };
 
   const logout = async () => {
-    await AsyncStorage.multiRemove([
-      "token",
-      "loginEmail",
-      "buyerProfile",
-      "role",
-    ]);
+    await AsyncStorage.multiRemove(["token", "loginEmail", "role"]);
     router.replace("/auth/buyerlogin");
   };
 
@@ -119,7 +98,6 @@ export default function BuyerProfile() {
   if (loading) {
     return (
       <SafeAreaView style={styles.center}>
-        <StatusBar style="dark" />
         <ActivityIndicator size="large" color="#2E7D32" />
       </SafeAreaView>
     );
@@ -129,75 +107,86 @@ export default function BuyerProfile() {
   if (error) {
     return (
       <SafeAreaView style={styles.center}>
-        <StatusBar style="dark" />
-        <Text style={{ color: "#DC2626", marginBottom: 12 }}>{error}</Text>
+        <Text style={styles.error}>{error}</Text>
         <TouchableOpacity onPress={logout}>
-          <Text style={{ color: "#2563EB", fontWeight: "700" }}>
-            Go to Login
-          </Text>
+          <Text style={styles.link}>Go to Login</Text>
         </TouchableOpacity>
       </SafeAreaView>
     );
   }
 
-  /* ---------- UI ---------- */
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar style="dark" />
 
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: insets.bottom + 40 }}
-      >
-        {/* HEADER */}
-        <View style={[styles.header, { paddingTop: insets.top + 16 }]}>
-          <MaterialCommunityIcons
-            name="account-circle"
-            size={72}
-            color="#2E7D32"
-          />
-          <Text style={styles.name}>{buyer?.companyName || "-"}</Text>
-          <Text style={styles.subText}>
-            Buyer · {buyer?.companyAddress?.city || "-"}
-          </Text>
-        </View>
+      {/* HEADER */}
+      <View style={[styles.header, { paddingTop: insets.top + 16 }]}>
+        <MaterialCommunityIcons
+          name="account-circle"
+          size={72}
+          color="#2E7D32"
+        />
+        <Text style={styles.name}>{buyer?.companyName}</Text>
+        <Text style={styles.subText}>
+          Buyer · {buyer?.companyAddress?.city || "-"}
+        </Text>
+      </View>
 
-        {/* BUSINESS DETAILS */}
-        <View style={styles.card}>
-          <Text style={styles.sectionTitle}>🏢 Business Details</Text>
+      {/* TABS */}
+      <View style={styles.tabs}>
+        <TabButton
+          label="Profile"
+          active={activeTab === "profile"}
+          onPress={() => setActiveTab("profile")}
+        />
+        <TabButton
+          label="Activity"
+          active={activeTab === "activity"}
+          onPress={() => setActiveTab("activity")}
+        />
+      </View>
 
-          <Info label="Owner Name" value={buyer?.name} />
-          <Info label="Business Name" value={buyer?.companyName} />
-          <Info
-            label="Location"
-            value={`${buyer?.companyAddress?.city || "-"}, ${
-              buyer?.companyAddress?.state || "-"
-            }`}
-          />
-          <Info label="Mobile" value={buyer?.mobile} />
-          <Info label="Email" value={buyer?.email} />
-          <Info
-            label="Verification"
-            value={buyer?.verified ? "Verified ✅" : "Not Verified ❌"}
-          />
-        </View>
+      <ScrollView contentContainerStyle={{ paddingBottom: insets.bottom + 40 }}>
+        {/* PROFILE TAB */}
+        {activeTab === "profile" && (
+          <View style={styles.card}>
+            <Text style={styles.sectionTitle}>🏢 Business Details</Text>
 
-        {/* ACTIVITY */}
-        <View style={styles.card}>
-          <Text style={styles.sectionTitle}>📊 My Activity</Text>
-
-          <TouchableOpacity
-            style={styles.rowItem}
-            onPress={() => router.push("/buyer-demands")}
-          >
-            <Text style={styles.rowText}>Posted Demands</Text>
-            <MaterialCommunityIcons
-              name="chevron-right"
-              size={22}
-              color="#6B7280"
+            <Info label="Owner Name" value={buyer?.name} />
+            <Info label="Business Name" value={buyer?.companyName} />
+            <Info
+              label="Location"
+              value={`${buyer?.companyAddress?.city || "-"}, ${
+                buyer?.companyAddress?.state || "-"
+              }`}
             />
-          </TouchableOpacity>
-        </View>
+            <Info label="Mobile" value={buyer?.mobile} />
+            <Info label="Email" value={buyer?.email} />
+            <Info
+              label="Verification"
+              value={buyer?.verified ? "Verified ✅" : "Not Verified ❌"}
+            />
+          </View>
+        )}
+
+        {/* ACTIVITY TAB */}
+        {activeTab === "activity" && (
+          <View style={styles.card}>
+            <Text style={styles.sectionTitle}>📊 My Activity</Text>
+
+            <TouchableOpacity
+              style={styles.rowItem}
+              onPress={() => router.push("/buyer-demands")}
+            >
+              <Text style={styles.rowText}>Posted Demands</Text>
+              <MaterialCommunityIcons
+                name="chevron-right"
+                size={22}
+                color="#6B7280"
+              />
+            </TouchableOpacity>
+          </View>
+        )}
 
         {/* SETTINGS */}
         <View style={styles.card}>
@@ -215,8 +204,8 @@ export default function BuyerProfile() {
   );
 }
 
-/* ---------- INFO ROW ---------- */
-function Info({ label, value }: { label: string; value?: string | null }) {
+/* ---------- SMALL COMPONENTS ---------- */
+function Info({ label, value }: { label: string; value?: string }) {
   return (
     <View style={styles.infoRow}>
       <Text style={styles.label}>{label}</Text>
@@ -225,38 +214,62 @@ function Info({ label, value }: { label: string; value?: string | null }) {
   );
 }
 
+function TabButton({
+  label,
+  active,
+  onPress,
+}: {
+  label: string;
+  active: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      style={[styles.tabBtn, active && styles.tabActive]}
+    >
+      <Text style={[styles.tabText, active && styles.tabTextActive]}>
+        {label}
+      </Text>
+    </TouchableOpacity>
+  );
+}
+
 /* ---------- STYLES ---------- */
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#F9FAFB",
-  },
-
-  center: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 16,
-  },
+  container: { flex: 1, backgroundColor: "#F9FAFB" },
+  center: { flex: 1, justifyContent: "center", alignItems: "center" },
 
   header: {
     alignItems: "center",
-    paddingBottom: 24,
     backgroundColor: "#fff",
+    paddingBottom: 20,
+  },
+
+  name: { fontSize: 20, fontWeight: "800", marginTop: 8 },
+  subText: { color: "#6B7280" },
+
+  tabs: {
+    flexDirection: "row",
+    backgroundColor: "#fff",
+    marginHorizontal: 16,
+    borderRadius: 12,
     marginBottom: 12,
   },
 
-  name: {
-    fontSize: 20,
-    fontWeight: "800",
-    marginTop: 8,
-    color: "#111827",
+  tabBtn: {
+    flex: 1,
+    paddingVertical: 10,
+    alignItems: "center",
   },
 
-  subText: {
-    color: "#6B7280",
-    marginTop: 2,
+  tabActive: {
+    borderBottomWidth: 2,
+    borderBottomColor: "#2E7D32",
   },
+
+  tabText: { color: "#6B7280", fontWeight: "600" },
+  tabTextActive: { color: "#2E7D32" },
 
   card: {
     backgroundColor: "#fff",
@@ -266,46 +279,22 @@ const styles = StyleSheet.create({
     padding: 16,
   },
 
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: "700",
-    marginBottom: 12,
-  },
+  sectionTitle: { fontSize: 16, fontWeight: "700", marginBottom: 12 },
 
-  infoRow: {
-    marginBottom: 8,
-  },
-
-  label: {
-    fontSize: 12,
-    color: "#6B7280",
-  },
-
-  value: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#111827",
-  },
+  infoRow: { marginBottom: 8 },
+  label: { fontSize: 12, color: "#6B7280" },
+  value: { fontSize: 14, fontWeight: "600" },
 
   rowItem: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "center",
     paddingVertical: 12,
   },
 
-  rowText: {
-    fontSize: 15,
-    color: "#111827",
-  },
+  rowText: { fontSize: 15 },
+  logoutRow: { marginTop: 8 },
+  logoutText: { color: "#DC2626", fontWeight: "700" },
 
-  logoutRow: {
-    marginTop: 8,
-  },
-
-  logoutText: {
-    color: "#DC2626",
-    fontWeight: "700",
-    fontSize: 15,
-  },
+  error: { color: "#DC2626", marginBottom: 12 },
+  link: { color: "#2563EB", fontWeight: "700" },
 });

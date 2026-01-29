@@ -5,11 +5,11 @@ import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
+  Modal,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
-  useWindowDimensions,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -20,6 +20,7 @@ type TabType = "demands" | "listings";
 type BuyerDemand = {
   _id?: string;
   CropId?: string;
+  market?: any;
   Market?: string;
   ExpectedPrice?: { Value?: number };
   RequiredQuantity?: { Value?: number; Unit?: string };
@@ -29,6 +30,7 @@ type BuyerDemand = {
 type FarmerListing = {
   _id?: string;
   crop?: { name?: string };
+  market?: any;
   location?: { village?: string; city?: string };
   price?: number;
   quantity?: number;
@@ -38,76 +40,60 @@ type FarmerListing = {
 
 export default function FarmerMarketplace() {
   const router = useRouter();
-  const { width } = useWindowDimensions();
 
   const [activeTab, setActiveTab] = useState<TabType>("demands");
   const [demands, setDemands] = useState<BuyerDemand[]>([]);
   const [listings, setListings] = useState<FarmerListing[]>([]);
-  const [loading, setLoading] = useState<boolean>(false);
+  const [loading, setLoading] = useState(false);
+
   const [cropMap, setCropMap] = useState<Record<string, string>>({});
+  const [viewDemand, setViewDemand] = useState<BuyerDemand | null>(null);
+  const [viewListing, setViewListing] = useState<FarmerListing | null>(null);
 
   /* ---------- AUTH ---------- */
 
   const getAuthHeaders = async () => {
     const token = await AsyncStorage.getItem("token");
-    if (!token) throw new Error("Missing token");
     return { Authorization: `Bearer ${token}` };
   };
 
   /* ---------- LOAD CROPS ---------- */
 
   const loadCrops = async () => {
-    try {
-      const headers = await getAuthHeaders();
-      const res = await axios.get(`${BASE_URL}/getAllCrop`, { headers });
+    const headers = await getAuthHeaders();
+    const res = await axios.get(`${BASE_URL}/getAllCrop`, { headers });
 
-      const map: Record<string, string> = {};
-      (res.data || []).forEach((c: any) => {
-        map[c.id || c._id] = c.name;
-      });
-
-      setCropMap(map);
-    } catch (err) {
-      console.log("Failed to load crops", err);
-    }
+    const map: Record<string, string> = {};
+    (res.data || []).forEach((c: any) => {
+      map[c._id || c.id] = c.name;
+    });
+    setCropMap(map);
   };
 
-  /* ---------- BUYER DEMANDS ---------- */
+  /* ---------- FETCH DATA ---------- */
 
   const fetchBuyerDemands = async () => {
     try {
       setLoading(true);
       const headers = await getAuthHeaders();
-
       const res = await axios.get(`${BASE_URL}/marketplace/buyer/all`, {
         headers,
       });
-
-      setDemands(Array.isArray(res.data) ? res.data : []);
-    } catch (err) {
-      console.log("Failed to load buyer demands", err);
-      setDemands([]);
+      setDemands(res.data || []);
     } finally {
       setLoading(false);
     }
   };
 
-  /* ---------- FARMER LISTINGS ---------- */
-
   const fetchMyListings = async () => {
     try {
       setLoading(true);
       const headers = await getAuthHeaders();
-
       const res = await axios.get(
         `${BASE_URL}/marketplace/farmer/getAllListing`,
         { headers },
       );
-
-      setListings(Array.isArray(res.data) ? res.data : []);
-    } catch (err) {
-      console.log("Failed to load listings", err);
-      setListings([]);
+      setListings(res.data || []);
     } finally {
       setLoading(false);
     }
@@ -120,22 +106,20 @@ export default function FarmerMarketplace() {
   }, []);
 
   useEffect(() => {
-    if (activeTab === "demands") {
-      fetchBuyerDemands();
-    } else {
-      fetchMyListings();
-    }
+    activeTab === "demands" ? fetchBuyerDemands() : fetchMyListings();
   }, [activeTab]);
 
-  /* ---------- RENDER BUYER DEMAND ---------- */
+  /* ---------- BUYER DEMAND CARD ---------- */
 
   const renderDemand = ({ item }: { item: BuyerDemand }) => {
-    const cropName = (item.CropId && cropMap[item.CropId]) || "Unknown Crop";
+    const cropName = cropMap[item.CropId || ""] || "Unknown Crop";
+    const marketName =
+      item.market?.marketName || item.market?.name || item.Market || "-";
 
     return (
       <View style={styles.card}>
         <Text style={styles.crop}>{cropName}</Text>
-        <Text style={styles.market}>Market: {item.Market || "-"}</Text>
+        <Text style={styles.market}>Market: {marketName}</Text>
 
         <View style={styles.row}>
           <Text style={styles.price}>₹{item.ExpectedPrice?.Value ?? "-"}</Text>
@@ -146,22 +130,29 @@ export default function FarmerMarketplace() {
         </View>
 
         <Text style={styles.status}>Status: {item.status || "active"}</Text>
+
+        <View style={styles.cardFooter}>
+          <TouchableOpacity
+            style={styles.viewBtn}
+            onPress={() => setViewDemand(item)}
+          >
+            <Text style={styles.viewText}>View</Text>
+          </TouchableOpacity>
+        </View>
       </View>
     );
   };
 
-  /* ---------- RENDER LISTING ---------- */
+  /* ---------- MY LISTING CARD ---------- */
 
   const renderListing = ({ item }: { item: FarmerListing }) => {
-    const cropName = item.crop?.name || "Unknown Crop";
     const location = [item.location?.village, item.location?.city]
       .filter(Boolean)
       .join(", ");
 
     return (
       <View style={styles.card}>
-        <Text style={styles.crop}>{cropName}</Text>
-        <Text style={styles.market}>{location || "Unknown location"}</Text>
+        <Text style={styles.crop}>{item.crop?.name || "Unknown Crop"}</Text>
 
         <View style={styles.row}>
           <Text style={styles.price}>₹{item.price ?? "-"}</Text>
@@ -171,11 +162,18 @@ export default function FarmerMarketplace() {
         </View>
 
         <Text style={styles.status}>Status: {item.status || "active"}</Text>
+
+        <View style={styles.cardFooter}>
+          <TouchableOpacity
+            style={styles.viewBtn}
+            onPress={() => setViewListing(item)}
+          >
+            <Text style={styles.viewText}>View</Text>
+          </TouchableOpacity>
+        </View>
       </View>
     );
   };
-
-  /* ---------- UI ---------- */
 
   return (
     <SafeAreaView style={styles.container}>
@@ -201,7 +199,6 @@ export default function FarmerMarketplace() {
         ))}
       </View>
 
-      {/* CTA */}
       {activeTab === "listings" && (
         <TouchableOpacity
           style={styles.primaryBtn}
@@ -211,21 +208,75 @@ export default function FarmerMarketplace() {
         </TouchableOpacity>
       )}
 
-      {/* LIST */}
       {loading ? (
-        <ActivityIndicator
-          size="large"
-          color="#2E7D32"
-          style={{ marginTop: 30 }}
-        />
+        <ActivityIndicator size="large" color="#2E7D32" />
       ) : (
         <FlatList
           data={activeTab === "demands" ? demands : listings}
           renderItem={activeTab === "demands" ? renderDemand : renderListing}
-          keyExtractor={(item, index) => (item as any)._id || index.toString()}
+          keyExtractor={(item, index) => item._id || index.toString()}
           contentContainerStyle={{ paddingBottom: 120 }}
-          showsVerticalScrollIndicator={false}
         />
+      )}
+
+      {/* ---------- BUYER DEMAND VIEW ---------- */}
+      {viewDemand && (
+        <Modal transparent animationType="slide">
+          <View style={styles.modalBg}>
+            <View style={styles.modalCard}>
+              <Text style={styles.modalTitle}>
+                {cropMap[viewDemand.CropId || ""] || "Crop"}
+              </Text>
+
+              <Text>Market: {viewDemand.market?.marketName || "-"}</Text>
+              <Text>
+                Expected Price: ₹{viewDemand.ExpectedPrice?.Value ?? "-"}
+              </Text>
+              <Text>
+                Quantity: {viewDemand.RequiredQuantity?.Value ?? "-"}{" "}
+                {viewDemand.RequiredQuantity?.Unit ?? ""}
+              </Text>
+              <Text>Status: {viewDemand.status || "active"}</Text>
+
+              <TouchableOpacity style={styles.contactBtn}>
+                <Text style={styles.contactText}>Contact Buyer</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.closeBtn}
+                onPress={() => setViewDemand(null)}
+              >
+                <Text style={styles.closeText}>Close</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
+      )}
+
+      {/* ---------- MY LISTING VIEW ---------- */}
+      {viewListing && (
+        <Modal transparent animationType="slide">
+          <View style={styles.modalBg}>
+            <View style={styles.modalCard}>
+              <Text style={styles.modalTitle}>
+                {viewListing.crop?.name || "Crop"}
+              </Text>
+
+              <Text>Price: ₹{viewListing.price ?? "-"}</Text>
+              <Text>
+                Quantity: {viewListing.quantity ?? "-"} {viewListing.unit ?? ""}
+              </Text>
+              <Text>Status: {viewListing.status || "active"}</Text>
+
+              <TouchableOpacity
+                style={styles.closeBtn}
+                onPress={() => setViewListing(null)}
+              >
+                <Text style={styles.closeText}>Close</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
       )}
     </SafeAreaView>
   );
@@ -234,12 +285,7 @@ export default function FarmerMarketplace() {
 /* ---------- STYLES ---------- */
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#F9FAFB",
-    padding: 16,
-  },
-
+  container: { flex: 1, backgroundColor: "#F9FAFB", padding: 16 },
   title: {
     fontSize: 22,
     fontWeight: "800",
@@ -254,26 +300,15 @@ const styles = StyleSheet.create({
     padding: 6,
     marginBottom: 12,
   },
-
   tabButton: {
     flex: 1,
     paddingVertical: 8,
     borderRadius: 8,
     alignItems: "center",
   },
-
-  activeTab: {
-    backgroundColor: "#2E7D32",
-  },
-
-  tabText: {
-    fontWeight: "700",
-    color: "#2E7D32",
-  },
-
-  activeTabText: {
-    color: "#fff",
-  },
+  activeTab: { backgroundColor: "#2E7D32" },
+  tabText: { fontWeight: "700", color: "#2E7D32" },
+  activeTabText: { color: "#fff" },
 
   primaryBtn: {
     backgroundColor: "#2E7D32",
@@ -282,12 +317,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: 12,
   },
-
-  primaryBtnText: {
-    color: "#fff",
-    fontSize: 15,
-    fontWeight: "700",
-  },
+  primaryBtnText: { color: "#fff", fontSize: 15, fontWeight: "700" },
 
   card: {
     backgroundColor: "#fff",
@@ -296,33 +326,55 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
 
-  crop: {
-    fontSize: 16,
-    fontWeight: "700",
+  cardFooter: {
+    marginTop: 8,
+    alignItems: "flex-start",
   },
 
-  market: {
-    color: "#6B7280",
-    marginBottom: 8,
+  viewBtn: {
+    borderWidth: 1,
+    borderColor: "#2E7D32",
+    borderRadius: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
   },
+  viewText: { fontSize: 12, fontWeight: "700", color: "#2E7D32" },
+
+  crop: { fontSize: 16, fontWeight: "700" },
+  market: { color: "#6B7280", marginBottom: 8 },
 
   row: {
     flexDirection: "row",
     justifyContent: "space-between",
     marginBottom: 6,
   },
+  price: { color: "#2E7D32", fontWeight: "700" },
+  qty: { fontWeight: "600" },
+  status: { fontSize: 12, color: "#374151" },
 
-  price: {
-    color: "#2E7D32",
-    fontWeight: "700",
+  modalBg: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.4)",
+    justifyContent: "center",
+    alignItems: "center",
   },
+  modalCard: {
+    backgroundColor: "#fff",
+    width: "90%",
+    borderRadius: 12,
+    padding: 20,
+  },
+  modalTitle: { fontSize: 18, fontWeight: "800", marginBottom: 12 },
 
-  qty: {
-    fontWeight: "600",
+  contactBtn: {
+    backgroundColor: "#2E7D32",
+    paddingVertical: 10,
+    borderRadius: 10,
+    alignItems: "center",
+    marginTop: 16,
   },
+  contactText: { color: "#fff", fontWeight: "700" },
 
-  status: {
-    fontSize: 12,
-    color: "#374151",
-  },
+  closeBtn: { marginTop: 12, alignItems: "center" },
+  closeText: { fontWeight: "700", color: "#2E7D32" },
 });

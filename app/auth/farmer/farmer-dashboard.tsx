@@ -22,8 +22,6 @@ import {
 
 const BASE_URL = "https://mandiconnect.onrender.com";
 
-type Crop = { _id: string; name: string; displayUnit?: string };
-type Market = { _id: string; marketName?: string };
 type Entry = {
   _id?: string;
   crop?: any;
@@ -35,35 +33,20 @@ type Entry = {
   quantity?: string;
   status?: string;
   createdAt?: string;
-  [key: string]: any;
-};
-
-const computePriceStats = (list: Entry[], cropId?: string) => {
-  const prices = list
-    .filter((e) => {
-      const cid = e.crop?._id || e.crop?.id || e.cropId;
-      return !cropId || String(cid) === String(cropId);
-    })
-    .map((e) => Number(e.price ?? e.rate))
-    .filter((p) => !isNaN(p));
-
-  if (!prices.length) return { count: 0, min: 0, avg: 0, max: 0 };
-
-  const min = Math.min(...prices);
-  const max = Math.max(...prices);
-  const avg =
-    Math.round((prices.reduce((a, b) => a + b, 0) / prices.length) * 100) / 100;
-
-  return { count: prices.length, min, avg, max };
 };
 
 const formatEntry = (e: Entry) => ({
-  cropName: e.crop?.name || e.cropName || "Unknown Crop",
-  marketName: e.market?.marketName || e.marketName || "Unknown Market",
+  cropName: e.crop?.name || e.cropName || "",
+
+  marketName: e.market?.marketName || e.market?.name || e.marketName || "",
+
   price: e.price ?? e.rate ?? 0,
+
   quantity: e.quantity || e.crop?.displayUnit || "",
-  status: e.status || "active",
-  time: e.createdAt ? new Date(e.createdAt).toLocaleString() : "N/A",
+
+  status: e.status || "",
+
+  time: e.createdAt ? new Date(e.createdAt).toLocaleString() : "",
 });
 
 export default function FarmerDashboard() {
@@ -74,19 +57,11 @@ export default function FarmerDashboard() {
   const [activeTab, setActiveTab] = useState<"community" | "marketStats">(
     "community",
   );
-  const [filterType, setFilterType] = useState<"all" | "crop" | "market">(
-    "all",
-  );
 
   const [communityEntries, setCommunityEntries] = useState<Entry[]>([]);
   const [marketStatsEntries, setMarketStatsEntries] = useState<Entry[]>([]);
-  const [crops, setCrops] = useState<Crop[]>([]);
-  const [markets, setMarkets] = useState<Market[]>([]);
-
-  const [selectedCropId, setSelectedCropId] = useState<string | null>(null);
-  const [selectedMarketId, setSelectedMarketId] = useState<string | null>(null);
-  const [searchText, setSearchText] = useState("");
   const [viewEntry, setViewEntry] = useState<Entry | null>(null);
+  const [searchText, setSearchText] = useState("");
 
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -95,189 +70,177 @@ export default function FarmerDashboard() {
     Authorization: `Bearer ${await AsyncStorage.getItem("token")}`,
   });
 
-  const fetchCrops = async () => {
-    const res = await axios.get(`${BASE_URL}/getAllCrop`, {
-      headers: await getHeaders(),
-    });
-    setCrops(res.data || []);
-  };
-
-  const fetchMarkets = async () => {
-    const res = await axios.get(`${BASE_URL}/getAllMarket`, {
-      headers: await getHeaders(),
-    });
-    setMarkets(res.data || []);
-  };
-
   const fetchCommunity = async () => {
     setLoading(true);
-    const res = await axios.get(`${BASE_URL}/farmer-entries/getAllEntries`, {
-      headers: await getHeaders(),
-    });
-    setCommunityEntries(res.data || []);
-    setLoading(false);
-    setRefreshing(false);
+    try {
+      const res = await axios.get(`${BASE_URL}/farmer-entries/getAllEntries`, {
+        headers: await getHeaders(),
+      });
+      setCommunityEntries(res.data || []);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
   };
 
   const fetchMarketStats = async () => {
     setLoading(true);
-    const res = await axios.get(
-      `${BASE_URL}/marketplace/farmer/getAllListing`,
-      { headers: await getHeaders() },
-    );
-    setMarketStatsEntries(res.data || []);
-    setLoading(false);
-    setRefreshing(false);
+    try {
+      const res = await axios.get(
+        `${BASE_URL}/marketplace/farmer/getAllListing`,
+        { headers: await getHeaders() },
+      );
+      setMarketStatsEntries(res.data || []);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
   };
 
   useEffect(() => {
-    fetchCrops();
-    fetchMarkets();
-  }, []);
+    activeTab === "community" ? fetchCommunity() : fetchMarketStats();
+  }, [activeTab]);
 
-  useEffect(() => {
-    if (activeTab === "community") {
-      fetchCommunity();
-    } else {
-      fetchMarketStats();
-    }
-  }, [activeTab, filterType, selectedCropId, selectedMarketId]);
+  const selectedEntry = useMemo(
+    () => (viewEntry ? formatEntry(viewEntry) : null),
+    [viewEntry],
+  );
 
-  const priceStats = useMemo(() => {
-    if (!viewEntry) return null;
-    const cropId = viewEntry.crop?._id || viewEntry.cropId;
-    return computePriceStats(
-      [...communityEntries, ...marketStatsEntries],
-      String(cropId),
-    );
-  }, [viewEntry, communityEntries, marketStatsEntries]);
+  const data =
+    activeTab === "community" ? communityEntries : marketStatsEntries;
 
   return (
-    <SafeAreaView style={[styles.container, { paddingTop: insets.top }]}>
-      {/* HEADER */}
-      <View style={styles.header}>
-        <TouchableOpacity
-          onPress={() => router.back()}
-          style={styles.backButton}
-        >
-          <MaterialCommunityIcons name="arrow-left" size={26} color="#2E7D32" />
-        </TouchableOpacity>
-
-        <View style={styles.headerCenter}>
-          <MaterialCommunityIcons name="sprout" size={34} color="#2E7D32" />
-          <Text style={styles.headerTitle}>Farmer’s Hub</Text>
-        </View>
-
-        <View style={{ width: 40 }} />
-      </View>
-
-      {/* TABS */}
-      <View style={styles.toggleContainer}>
-        {["community", "marketStats"].map((t) => (
+    <SafeAreaView style={styles.safe}>
+      <View style={[styles.container, { paddingTop: insets.top }]}>
+        {/* HEADER */}
+        <View style={styles.header}>
           <TouchableOpacity
-            key={t}
-            style={[
-              styles.toggleButton,
-              activeTab === t && styles.toggleActive,
-            ]}
-            onPress={() => setActiveTab(t as any)}
+            onPress={() => router.back()}
+            style={styles.backButton}
           >
-            <Text
-              style={[
-                styles.toggleText,
-                activeTab === t && styles.toggleTextActive,
-              ]}
-            >
-              {t === "community" ? "Community Price" : "All Statistics"}
-            </Text>
+            <MaterialCommunityIcons
+              name="arrow-left"
+              size={26}
+              color="#2E7D32"
+            />
           </TouchableOpacity>
-        ))}
-      </View>
 
-      {/* SEARCH */}
-      {activeTab === "marketStats" && (
-        <TextInput
-          placeholder="Search crop or market..."
-          value={searchText}
-          onChangeText={setSearchText}
-          style={styles.input}
-        />
-      )}
-
-      {/* LIST */}
-      <ScrollView
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={fetchCommunity} />
-        }
-        contentContainerStyle={{ paddingBottom: 120 }}
-      >
-        {loading ? (
-          <ActivityIndicator size="large" color="#2E7D32" />
-        ) : (
-          (activeTab === "community"
-            ? communityEntries
-            : marketStatsEntries
-          ).map((entry, idx) => {
-            const f = formatEntry(entry);
-            return (
-              <View
-                key={entry._id || idx}
-                style={[styles.card, width < 360 && { padding: 10 }]}
-              >
-                <Text style={styles.price}>₹{f.price}</Text>
-                <Text style={styles.cropName}>{f.cropName}</Text>
-                <Text style={styles.variety}>{f.quantity}</Text>
-
-                <TouchableOpacity
-                  style={styles.viewButton}
-                  onPress={() => setViewEntry(entry)}
-                >
-                  <Text>View</Text>
-                </TouchableOpacity>
-              </View>
-            );
-          })
-        )}
-      </ScrollView>
-
-      {/* FAB */}
-      <TouchableOpacity
-        style={styles.fab}
-        onPress={() => router.push("/(app)/farmer/add-crop")}
-      >
-        <MaterialCommunityIcons name="plus" size={28} color="#fff" />
-      </TouchableOpacity>
-
-      {/* MODAL */}
-      <Modal visible={!!viewEntry} transparent animationType="slide">
-        <View style={styles.modalBackground}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>{viewEntry?.crop?.name}</Text>
-
-            {priceStats && (
-              <>
-                <Text>Entries: {priceStats.count}</Text>
-                <Text>Min: ₹{priceStats.min}</Text>
-                <Text>Avg: ₹{priceStats.avg}</Text>
-                <Text>Max: ₹{priceStats.max}</Text>
-              </>
-            )}
-
-            <TouchableOpacity
-              style={styles.submitButton}
-              onPress={() => setViewEntry(null)}
-            >
-              <Text style={styles.submitText}>Close</Text>
-            </TouchableOpacity>
+          <View style={styles.headerCenter}>
+            <MaterialCommunityIcons name="sprout" size={34} color="#2E7D32" />
+            <Text style={styles.headerTitle}>Farmer’s Hub</Text>
           </View>
+
+          <View style={{ width: 40 }} />
         </View>
-      </Modal>
+
+        {/* TABS */}
+        <View style={styles.toggleContainer}>
+          {["community", "marketStats"].map((t) => (
+            <TouchableOpacity
+              key={t}
+              style={[
+                styles.toggleButton,
+                activeTab === t && styles.toggleActive,
+              ]}
+              onPress={() => setActiveTab(t as any)}
+            >
+              <Text
+                style={[
+                  styles.toggleText,
+                  activeTab === t && styles.toggleTextActive,
+                ]}
+              >
+                {t === "community" ? "Community Price" : "All Statistics"}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        {/* SEARCH */}
+        {activeTab === "marketStats" && (
+          <TextInput
+            placeholder="Search crop or market..."
+            value={searchText}
+            onChangeText={setSearchText}
+            style={styles.input}
+          />
+        )}
+
+        {/* LIST */}
+        <ScrollView
+          contentContainerStyle={{
+            paddingBottom: insets.bottom + 120,
+          }}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={
+                activeTab === "community" ? fetchCommunity : fetchMarketStats
+              }
+            />
+          }
+        >
+          {loading ? (
+            <ActivityIndicator
+              size="large"
+              color="#2E7D32"
+              style={{ marginTop: 40 }}
+            />
+          ) : (
+            data.map((entry, idx) => {
+              const f = formatEntry(entry);
+              return (
+                <View
+                  key={entry._id || idx}
+                  style={[styles.card, width < 360 && styles.cardCompact]}
+                >
+                  <Text style={styles.price}>₹{f.price}</Text>
+                  <Text style={styles.cropName}>{f.cropName}</Text>
+                  <Text style={styles.marketName}>{f.marketName}</Text>
+                  <Text style={styles.variety}>{f.quantity}</Text>
+
+                  <TouchableOpacity
+                    style={styles.viewButton}
+                    onPress={() => setViewEntry(entry)}
+                  >
+                    <Text>View</Text>
+                  </TouchableOpacity>
+                </View>
+              );
+            })
+          )}
+        </ScrollView>
+
+        {/* MODAL */}
+        <Modal visible={!!viewEntry} transparent animationType="slide">
+          <View style={styles.modalBackground}>
+            <View style={styles.modalCard}>
+              <Text style={styles.modalTitle}>{selectedEntry?.cropName}</Text>
+
+              <Text>Market: {selectedEntry?.marketName}</Text>
+              <Text>Price: ₹{selectedEntry?.price}</Text>
+              <Text>Quantity: {selectedEntry?.quantity}</Text>
+              <Text>Status: {selectedEntry?.status}</Text>
+              <Text>Posted: {selectedEntry?.time}</Text>
+
+              <TouchableOpacity
+                style={styles.submitButton}
+                onPress={() => setViewEntry(null)}
+              >
+                <Text style={styles.submitText}>Close</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
+      </View>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#F9FAFB" },
+  safe: { flex: 1, backgroundColor: "#F9FAFB" },
+  container: { flex: 1 },
+
   header: {
     flexDirection: "row",
     alignItems: "center",
@@ -291,10 +254,23 @@ const styles = StyleSheet.create({
     backgroundColor: "#E8F5E9",
     borderRadius: 8,
   },
-  headerCenter: { flexDirection: "row", alignItems: "center", gap: 8 },
-  headerTitle: { fontSize: 22, fontWeight: "700", color: "#2E7D32" },
+  headerCenter: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  headerTitle: {
+    fontSize: 22,
+    fontWeight: "700",
+    color: "#2E7D32",
+  },
 
-  toggleContainer: { flexDirection: "row", marginTop: 12 },
+  toggleContainer: {
+    flexDirection: "row",
+    marginTop: 12,
+    paddingHorizontal: 12,
+    gap: 8,
+  },
   toggleButton: {
     flex: 1,
     padding: 10,
@@ -319,10 +295,22 @@ const styles = StyleSheet.create({
     backgroundColor: "#fff",
     padding: 12,
     borderRadius: 10,
-    margin: 12,
+    marginHorizontal: 12,
+    marginTop: 12,
   },
-  price: { fontSize: 16, fontWeight: "700", color: "#2E7D32" },
+  cardCompact: { padding: 10 },
+
+  price: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#2E7D32",
+  },
   cropName: { fontSize: 15, fontWeight: "600" },
+  marketName: {
+    fontSize: 13,
+    color: "#374151",
+    marginTop: 2,
+  },
   variety: { color: "#6B7280" },
 
   viewButton: {
@@ -336,7 +324,6 @@ const styles = StyleSheet.create({
   fab: {
     position: "absolute",
     right: 24,
-    bottom: 24,
     backgroundColor: "#2E7D32",
     width: 56,
     height: 56,
@@ -357,7 +344,11 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     width: "90%",
   },
-  modalTitle: { fontSize: 18, fontWeight: "700", marginBottom: 8 },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    marginBottom: 8,
+  },
   submitButton: {
     backgroundColor: "#2E7D32",
     padding: 12,

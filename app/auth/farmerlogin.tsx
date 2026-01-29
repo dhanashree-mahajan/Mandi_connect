@@ -60,17 +60,21 @@ export default function FarmerLogin() {
       );
 
       if (response.data?.token) {
+        // ✅ SAVE TOKEN
         await AsyncStorage.setItem("token", response.data.token);
+
+        // ✅ SAVE FARMER ID (THIS WAS MISSING)
+        await AsyncStorage.setItem("farmerId", response.data["User ID"]);
+
         await AsyncStorage.setItem("role", "farmer");
 
         showAlert("Success", "Login successful");
         router.replace("/auth/farmer/farmer-dashboard");
       }
-    } catch (error: unknown) {
-      const err = error as any;
+    } catch (error: any) {
       showAlert(
         "Login Failed",
-        err.response?.data?.message || "Invalid email or password",
+        error.response?.data || "Invalid email or password",
       );
     } finally {
       setLoading(false);
