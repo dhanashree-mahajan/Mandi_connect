@@ -1,6 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import axios from "axios";
-import { useFocusEffect, useRouter } from "expo-router";
+import { useFocusEffect } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useCallback, useState } from "react";
 import {
@@ -30,16 +30,20 @@ type Demand = {
   Market: string;
   ExpectedPrice: { Value: number };
   RequiredQuantity: { Value: number; Unit: string };
+  createdAt?: string;
 };
 
 export default function BuyerDashboard() {
-  const router = useRouter();
   const insets = useSafeAreaInsets();
 
   const [activeTab, setActiveTab] = useState<DemandStatus>("active");
   const [demands, setDemands] = useState<Demand[]>([]);
-  const [loading, setLoading] = useState<boolean>(false);
+  const [loading, setLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [cropMap, setCropMap] = useState<Record<string, string>>({});
+
+  const [selectedDemand, setSelectedDemand] = useState<Demand | null>(null);
+  const [showModal, setShowModal] = useState(false);
 
   /* ---------- Helpers ---------- */
   const getAuthHeaders = async () => {
@@ -68,7 +72,6 @@ export default function BuyerDashboard() {
   /* ---------- Fetch demands ---------- */
   const fetchDemands = async (status: DemandStatus) => {
     try {
-      setLoading(true);
       const headers = await getAuthHeaders();
 
       const res = await axios.get(
@@ -80,8 +83,6 @@ export default function BuyerDashboard() {
     } catch (err) {
       console.log("Failed to fetch demands", err);
       setDemands([]);
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -114,10 +115,19 @@ export default function BuyerDashboard() {
   /* ---------- Refresh on focus ---------- */
   useFocusEffect(
     useCallback(() => {
-      loadCrops();
-      fetchDemands(activeTab);
+      setLoading(true);
+      Promise.all([loadCrops(), fetchDemands(activeTab)]).finally(() =>
+        setLoading(false),
+      );
     }, [activeTab]),
   );
+
+  /* ---------- Pull to refresh ---------- */
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await Promise.all([loadCrops(), fetchDemands(activeTab)]);
+    setRefreshing(false);
+  };
 
   /* ---------- Render item ---------- */
   const renderItem = ({ item }: { item: Demand }) => {
@@ -137,6 +147,16 @@ export default function BuyerDashboard() {
 
         <View style={styles.actionRow}>
           <TouchableOpacity
+            style={[styles.actionBtn, styles.viewBtn]}
+            onPress={() => {
+              setSelectedDemand(item);
+              setShowModal(true);
+            }}
+          >
+            <Text style={styles.viewText}>View</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
             style={[styles.actionBtn, styles.deleteBtn]}
             onPress={() => deleteDemand(item._id || item.id!)}
           >
@@ -154,7 +174,6 @@ export default function BuyerDashboard() {
 
       <Text style={styles.title}>🌾 Buyer Dashboard</Text>
 
-      {/* Tabs */}
       <View style={styles.tabRow}>
         {(["active", "fulfilled", "cancelled"] as DemandStatus[]).map((tab) => (
           <TouchableOpacity
@@ -185,11 +204,66 @@ export default function BuyerDashboard() {
           }
           contentContainerStyle={{ paddingBottom: insets.bottom + 80 }}
           showsVerticalScrollIndicator={false}
+          refreshing={refreshing}
+          onRefresh={onRefresh}
         />
+      )}
+
+      {showModal && selectedDemand && (
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Demand Details</Text>
+
+            <Detail
+              label="Crop"
+              value={cropMap[selectedDemand.CropId] || "Unknown"}
+            />
+            <Detail label="Market" value={selectedDemand.Market} />
+            <Detail
+              label="Price"
+              value={`₹${selectedDemand.ExpectedPrice.Value}`}
+            />
+            <Detail
+              label="Quantity"
+              value={`${selectedDemand.RequiredQuantity.Value} ${selectedDemand.RequiredQuantity.Unit}`}
+            />
+            <Detail
+              label="Date"
+              value={
+                selectedDemand.createdAt
+                  ? new Date(selectedDemand.createdAt).toDateString()
+                  : "—"
+              }
+            />
+            <Detail
+              label="Time"
+              value={
+                selectedDemand.createdAt
+                  ? new Date(selectedDemand.createdAt).toLocaleTimeString()
+                  : "—"
+              }
+            />
+
+            <TouchableOpacity
+              style={styles.closeBtn}
+              onPress={() => setShowModal(false)}
+            >
+              <Text style={styles.closeText}>Close</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
       )}
     </SafeAreaView>
   );
 }
+
+/* ---------- Detail Row ---------- */
+const Detail = ({ label, value }: { label: string; value: string }) => (
+  <View style={styles.detailRow}>
+    <Text style={styles.detailLabel}>{label}</Text>
+    <Text style={styles.detailValue}>{value}</Text>
+  </View>
+);
 
 /* ---------- Styles ---------- */
 const styles = StyleSheet.create({
@@ -198,14 +272,12 @@ const styles = StyleSheet.create({
     backgroundColor: "#F9FAFB",
     paddingHorizontal: 16,
   },
-
   title: {
     fontSize: 22,
     fontWeight: "800",
     textAlign: "center",
     marginBottom: 16,
   },
-
   tabRow: {
     flexDirection: "row",
     backgroundColor: "#fff",
@@ -213,82 +285,117 @@ const styles = StyleSheet.create({
     padding: 6,
     marginBottom: 12,
   },
-
   tabButton: {
     flex: 1,
     paddingVertical: 8,
     borderRadius: 8,
     alignItems: "center",
   },
-
   activeTab: {
     backgroundColor: "#2E7D32",
   },
-
   tabText: {
     fontWeight: "700",
     color: "#2E7D32",
   },
-
   activeTabText: {
     color: "#fff",
   },
-
   card: {
     backgroundColor: "#fff",
     borderRadius: 12,
     padding: 16,
     marginBottom: 12,
   },
-
   crop: {
     fontSize: 16,
     fontWeight: "700",
   },
-
   market: {
     color: "#6B7280",
     marginBottom: 8,
   },
-
   row: {
     flexDirection: "row",
     justifyContent: "space-between",
     marginBottom: 8,
   },
-
   price: {
     color: "#2E7D32",
     fontWeight: "700",
   },
-
   qty: {
     fontWeight: "600",
   },
-
   actionRow: {
     flexDirection: "row",
     marginTop: 10,
   },
-
   actionBtn: {
     paddingVertical: 6,
     paddingHorizontal: 12,
     borderRadius: 6,
     marginRight: 8,
   },
-
   deleteBtn: {
     backgroundColor: "#E5E7EB",
   },
-
+  viewBtn: {
+    backgroundColor: "#2E7D32",
+    marginLeft: "auto",
+  },
+  viewText: {
+    color: "#fff",
+    fontSize: 13,
+    fontWeight: "600",
+  },
   actionText: {
     fontSize: 13,
     fontWeight: "600",
   },
-
   loading: {
     textAlign: "center",
     marginTop: 30,
+  },
+  modalOverlay: {
+    position: "absolute",
+    inset: 0,
+    backgroundColor: "rgba(0,0,0,0.4)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  modalCard: {
+    width: "90%",
+    backgroundColor: "#fff",
+    borderRadius: 14,
+    padding: 16,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: "800",
+    marginBottom: 12,
+    textAlign: "center",
+  },
+  detailRow: {
+    marginBottom: 10,
+  },
+  detailLabel: {
+    fontSize: 12,
+    color: "#6B7280",
+  },
+  detailValue: {
+    fontSize: 15,
+    fontWeight: "700",
+  },
+  closeBtn: {
+    marginTop: 16,
+    backgroundColor: "#2E7D32",
+    paddingVertical: 10,
+    borderRadius: 8,
+    alignItems: "center",
+  },
+  closeText: {
+    color: "#fff",
+    fontWeight: "700",
   },
 });
