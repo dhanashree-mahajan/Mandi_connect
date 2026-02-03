@@ -1,13 +1,12 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import axios from "axios";
-import { useFocusEffect } from "expo-router";
-import { StatusBar } from "expo-status-bar";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
-  Alert,
+  ActivityIndicator,
   FlatList,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
@@ -16,386 +15,317 @@ import {
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
 
-export const options = { headerShown: false };
-
 const BASE_URL = "https://mandiconnect.onrender.com";
 
-/* ---------- TYPES ---------- */
-type DemandStatus = "active" | "fulfilled" | "cancelled";
+/* ================= TYPES ================= */
 
-type Demand = {
-  id?: string;
-  _id?: string;
-  CropId: string;
-  Market: string;
-  ExpectedPrice: { Value: number };
-  RequiredQuantity: { Value: number; Unit: string };
-  createdAt?: string;
+type Market = {
+  id: string;
+  marketName: string;
 };
 
-export default function BuyerDashboard() {
+type Crop = {
+  id: string;
+  name: string;
+  displayUnit: string;
+};
+
+type Trend = {
+  date: string;
+  averagePrice: number;
+};
+
+type CropStats = {
+  crop: Crop;
+  mandi: Market;
+  dailyStats: {
+    averagePrice: number;
+    minPrice: number;
+    maxPrice: number;
+    lastUpdated: string;
+    isStale: boolean;
+  };
+  trend: Trend[];
+};
+
+/* ================= COMPONENT ================= */
+
+export default function BuyerHome() {
   const insets = useSafeAreaInsets();
 
-  const [activeTab, setActiveTab] = useState<DemandStatus>("active");
-  const [demands, setDemands] = useState<Demand[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [crops, setCrops] = useState<Crop[]>([]);
+  const [stats, setStats] = useState<CropStats[]>([]);
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const [search, setSearch] = useState("");
+  const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [cropMap, setCropMap] = useState<Record<string, string>>({});
+  const [marketId, setMarketId] = useState<string | null>(null);
 
-  const [selectedDemand, setSelectedDemand] = useState<Demand | null>(null);
-  const [showModal, setShowModal] = useState(false);
-
-  /* ---------- Helpers ---------- */
-  const getAuthHeaders = async () => {
+  const getHeaders = async () => {
     const token = await AsyncStorage.getItem("token");
-    if (!token) throw new Error("Missing token");
     return { Authorization: `Bearer ${token}` };
   };
 
-  /* ---------- Load crops ---------- */
   const loadCrops = async () => {
-    try {
-      const headers = await getAuthHeaders();
-      const res = await axios.get(`${BASE_URL}/getAllCrop`, { headers });
-
-      const map: Record<string, string> = {};
-      res.data.forEach((c: any) => {
-        map[c.id || c._id] = c.name;
-      });
-
-      setCropMap(map);
-    } catch (err) {
-      console.log("Failed to load crops", err);
-    }
+    const res = await axios.get(`${BASE_URL}/getAllCrop`, {
+      headers: await getHeaders(),
+    });
+    setCrops(res.data);
   };
 
-  /* ---------- Fetch demands ---------- */
-  const fetchDemands = async (status: DemandStatus) => {
-    try {
-      const headers = await getAuthHeaders();
-
-      const res = await axios.get(
-        `${BASE_URL}/marketplace/buyer/status/${status}`,
-        { headers },
-      );
-
-      setDemands(Array.isArray(res.data) ? res.data : []);
-    } catch (err) {
-      console.log("Failed to fetch demands", err);
-      setDemands([]);
-    }
+  const loadMarket = async () => {
+    const res = await axios.get(`${BASE_URL}/getAllMarket`, {
+      headers: await getHeaders(),
+    });
+    setMarketId(res.data[0]?.id ?? null);
   };
 
-  /* ---------- Delete demand ---------- */
-  const deleteDemand = async (id: string) => {
-    Alert.alert(
-      "Delete Demand",
-      "Are you sure you want to delete this demand?",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Delete",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              const headers = await getAuthHeaders();
-              await axios.delete(`${BASE_URL}/marketplace/buyer/delete/${id}`, {
-                headers,
-              });
-              fetchDemands(activeTab);
-            } catch (err) {
-              console.log("Failed to delete demand", err);
-            }
-          },
-        },
-      ],
+  const loadPrices = async (mId: string) => {
+    const headers = await getHeaders();
+    const requests = crops.map((crop) =>
+      axios
+        .get(`${BASE_URL}/stats/getByCropIdAndMarketid/${crop.id}/${mId}`, {
+          headers,
+        })
+        .then((res) => res.data)
+        .catch(() => null),
     );
+    const results = await Promise.all(requests);
+    setStats(results.filter(Boolean));
   };
 
-  /* ---------- Refresh on focus ---------- */
-  useFocusEffect(
-    useCallback(() => {
+  useEffect(() => {
+    (async () => {
       setLoading(true);
-      Promise.all([loadCrops(), fetchDemands(activeTab)]).finally(() =>
-        setLoading(false),
-      );
-    }, [activeTab]),
+      await Promise.all([loadMarket(), loadCrops()]);
+      setLoading(false);
+    })();
+  }, []);
+
+  useEffect(() => {
+    if (marketId && crops.length) {
+      loadPrices(marketId);
+    }
+  }, [marketId, crops]);
+
+  const onRefresh = useCallback(async () => {
+    if (!marketId) return;
+    setRefreshing(true);
+    await loadPrices(marketId);
+    setRefreshing(false);
+  }, [marketId, crops]);
+
+  const filteredStats = stats.filter((item) =>
+    item.crop.name.toLowerCase().includes(search.toLowerCase()),
   );
 
-  /* ---------- Pull to refresh ---------- */
-  const onRefresh = async () => {
-    setRefreshing(true);
-    await Promise.all([loadCrops(), fetchDemands(activeTab)]);
-    setRefreshing(false);
-  };
-
-  /* ---------- Render item ---------- */
-  const renderItem = ({ item }: { item: Demand }) => {
-    const cropName = cropMap[item.CropId] || "Unknown Crop";
+  const renderItem = ({ item }: { item: CropStats }) => {
+    const d = item.dailyStats;
+    const isOpen = expanded[item.crop.id];
 
     return (
       <View style={styles.card}>
-        <Text style={styles.crop}>{cropName}</Text>
-        <Text style={styles.market}>{item.Market}</Text>
+        <View style={styles.cardHeader}>
+          <View>
+            <Text style={styles.crop}>{item.crop.name}</Text>
+            <Text style={styles.market}>{item.mandi.marketName}</Text>
+          </View>
 
-        <View style={styles.row}>
-          <Text style={styles.price}>₹{item.ExpectedPrice.Value}</Text>
-          <Text style={styles.qty}>
-            {item.RequiredQuantity.Value} {item.RequiredQuantity.Unit}
+          <View style={styles.priceBox}>
+            <Text style={styles.price}>₹{d.averagePrice}</Text>
+            <Text style={styles.unit}>/{item.crop.displayUnit}</Text>
+          </View>
+        </View>
+
+        <View style={styles.rangeRow}>
+          <Text style={styles.range}>Min ₹{d.minPrice}</Text>
+          <Text style={styles.range}>Max ₹{d.maxPrice}</Text>
+        </View>
+
+        <Text style={styles.time}>
+          Updated {new Date(d.lastUpdated).toLocaleString()}
+        </Text>
+
+        <TouchableOpacity
+          style={styles.trendToggleBox}
+          onPress={() =>
+            setExpanded((p) => ({ ...p, [item.crop.id]: !isOpen }))
+          }
+        >
+          <Text style={styles.trendToggle}>
+            {isOpen ? "Hide price trend ▲" : "Show price trend ▼"}
           </Text>
-        </View>
+        </TouchableOpacity>
 
-        <View style={styles.actionRow}>
-          <TouchableOpacity
-            style={[styles.actionBtn, styles.viewBtn]}
-            onPress={() => {
-              setSelectedDemand(item);
-              setShowModal(true);
-            }}
-          >
-            <Text style={styles.viewText}>View</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.actionBtn, styles.deleteBtn]}
-            onPress={() => deleteDemand(item._id || item.id!)}
-          >
-            <Text style={styles.actionText}>Delete</Text>
-          </TouchableOpacity>
-        </View>
+        {isOpen && (
+          <View style={styles.trendContainer}>
+            {item.trend?.map((t, i) => (
+              <View key={i} style={styles.trendRow}>
+                <Text style={styles.trendDate}>
+                  {new Date(t.date).toDateString()}
+                </Text>
+                <Text style={styles.trendPrice}>₹{t.averagePrice}</Text>
+              </View>
+            ))}
+          </View>
+        )}
       </View>
     );
   };
 
-  /* ---------- UI ---------- */
   return (
-    <SafeAreaView style={[styles.container, { paddingTop: insets.top + 8 }]}>
-      <StatusBar style="dark" />
-
-      <Text style={styles.title}>🌾 Buyer Dashboard</Text>
-
-      <View style={styles.tabRow}>
-        {(["active", "fulfilled", "cancelled"] as DemandStatus[]).map((tab) => (
-          <TouchableOpacity
-            key={tab}
-            onPress={() => setActiveTab(tab)}
-            style={[styles.tabButton, activeTab === tab && styles.activeTab]}
-          >
-            <Text
-              style={[
-                styles.tabText,
-                activeTab === tab && styles.activeTabText,
-              ]}
-            >
-              {tab.toUpperCase()}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-
-      {loading ? (
-        <Text style={styles.loading}>Loading...</Text>
-      ) : (
-        <FlatList
-          data={demands}
-          renderItem={renderItem}
-          keyExtractor={(item, index) =>
-            (item._id || item.id || index).toString()
-          }
-          contentContainerStyle={{ paddingBottom: insets.bottom + 80 }}
-          showsVerticalScrollIndicator={false}
-          refreshing={refreshing}
-          onRefresh={onRefresh}
-        />
-      )}
-
-      {showModal && selectedDemand && (
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Demand Details</Text>
-
-            <Detail
-              label="Crop"
-              value={cropMap[selectedDemand.CropId] || "Unknown"}
-            />
-            <Detail label="Market" value={selectedDemand.Market} />
-            <Detail
-              label="Price"
-              value={`₹${selectedDemand.ExpectedPrice.Value}`}
-            />
-            <Detail
-              label="Quantity"
-              value={`${selectedDemand.RequiredQuantity.Value} ${selectedDemand.RequiredQuantity.Unit}`}
-            />
-            <Detail
-              label="Date"
-              value={
-                selectedDemand.createdAt
-                  ? new Date(selectedDemand.createdAt).toDateString()
-                  : "—"
-              }
-            />
-            <Detail
-              label="Time"
-              value={
-                selectedDemand.createdAt
-                  ? new Date(selectedDemand.createdAt).toLocaleTimeString()
-                  : "—"
-              }
-            />
-
-            <TouchableOpacity
-              style={styles.closeBtn}
-              onPress={() => setShowModal(false)}
-            >
-              <Text style={styles.closeText}>Close</Text>
-            </TouchableOpacity>
-          </View>
+    <SafeAreaView style={styles.safeArea}>
+      <View style={[styles.container, { paddingTop: insets.top + 12 }]}>
+        {/* HEADER */}
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>🌾 Market Prices</Text>
         </View>
-      )}
+
+        {/* SEARCH */}
+        <View style={styles.searchBox}>
+          <TextInput
+            placeholder="Search crop"
+            value={search}
+            onChangeText={setSearch}
+            style={styles.searchInput}
+            placeholderTextColor="#000000"
+          />
+        </View>
+
+        {loading ? (
+          <ActivityIndicator size="large" style={{ marginTop: 40 }} />
+        ) : (
+          <FlatList
+            data={filteredStats}
+            renderItem={renderItem}
+            keyExtractor={(item) => item.crop.id}
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            showsVerticalScrollIndicator={false}
+          />
+        )}
+      </View>
     </SafeAreaView>
   );
 }
 
-/* ---------- Detail Row ---------- */
-const Detail = ({ label, value }: { label: string; value: string }) => (
-  <View style={styles.detailRow}>
-    <Text style={styles.detailLabel}>{label}</Text>
-    <Text style={styles.detailValue}>{value}</Text>
-  </View>
-);
+/* ================= STYLES ================= */
 
-/* ---------- Styles ---------- */
 const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: "#F3F4F6",
+  },
   container: {
     flex: 1,
-    backgroundColor: "#F9FAFB",
     paddingHorizontal: 16,
   },
-  title: {
+
+  header: {
+    marginBottom: 14,
+  },
+  headerTitle: {
     fontSize: 22,
     fontWeight: "800",
     textAlign: "center",
-    marginBottom: 16,
+    color: "#111827",
   },
-  tabRow: {
+
+  searchBox: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 14,
+    paddingHorizontal: 16,
+    paddingVertical: 5,
+    marginBottom: 14,
+  },
+  searchInput: {
+    fontSize: 15,
+    color: "#000000",
+  },
+
+  card: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 18,
+    padding: 16,
+    marginBottom: 14,
+  },
+
+  cardHeader: {
     flexDirection: "row",
-    backgroundColor: "#fff",
-    borderRadius: 10,
-    padding: 6,
-    marginBottom: 12,
-  },
-  tabButton: {
-    flex: 1,
-    paddingVertical: 8,
-    borderRadius: 8,
+    justifyContent: "space-between",
     alignItems: "center",
   },
-  activeTab: {
-    backgroundColor: "#2E7D32",
-  },
-  tabText: {
-    fontWeight: "700",
-    color: "#2E7D32",
-  },
-  activeTabText: {
-    color: "#fff",
-  },
-  card: {
-    backgroundColor: "#fff",
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
-  },
+
   crop: {
     fontSize: 16,
     fontWeight: "700",
+    color: "#111827",
   },
   market: {
+    fontSize: 13,
     color: "#6B7280",
-    marginBottom: 8,
+    marginTop: 2,
   },
-  row: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginBottom: 8,
+
+  priceBox: {
+    alignItems: "flex-end",
   },
   price: {
-    color: "#2E7D32",
-    fontWeight: "700",
+    fontSize: 22,
+    fontWeight: "800",
+    color: "#16A34A",
   },
-  qty: {
+  unit: {
+    fontSize: 12,
     fontWeight: "600",
+    color: "#16A34A",
   },
-  actionRow: {
+
+  rangeRow: {
     flexDirection: "row",
+    justifyContent: "space-between",
     marginTop: 10,
   },
-  actionBtn: {
+  range: {
+    fontSize: 13,
+    color: "#374151",
+    fontWeight: "600",
+  },
+
+  time: {
+    fontSize: 11,
+    color: "#9CA3AF",
+    marginTop: 6,
+  },
+
+  trendToggleBox: {
+    marginTop: 12,
+  },
+  trendToggle: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#16A34A",
+  },
+
+  trendContainer: {
+    marginTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: "#E5E7EB",
+    paddingTop: 8,
+  },
+
+  trendRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
     paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: 6,
-    marginRight: 8,
   },
-  deleteBtn: {
-    backgroundColor: "#E5E7EB",
-  },
-  viewBtn: {
-    backgroundColor: "#2E7D32",
-    marginLeft: "auto",
-  },
-  viewText: {
-    color: "#fff",
-    fontSize: 13,
-    fontWeight: "600",
-  },
-  actionText: {
-    fontSize: 13,
-    fontWeight: "600",
-  },
-  loading: {
-    textAlign: "center",
-    marginTop: 30,
-  },
-  modalOverlay: {
-    position: "absolute",
-    inset: 0,
-    backgroundColor: "rgba(0,0,0,0.4)",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  modalCard: {
-    width: "90%",
-    backgroundColor: "#fff",
-    borderRadius: 14,
-    padding: 16,
-  },
-  modalTitle: {
-    fontSize: 18,
-    fontWeight: "800",
-    marginBottom: 12,
-    textAlign: "center",
-  },
-  detailRow: {
-    marginBottom: 10,
-  },
-  detailLabel: {
+  trendDate: {
     fontSize: 12,
     color: "#6B7280",
   },
-  detailValue: {
-    fontSize: 15,
+  trendPrice: {
+    fontSize: 12,
     fontWeight: "700",
-  },
-  closeBtn: {
-    marginTop: 16,
-    backgroundColor: "#2E7D32",
-    paddingVertical: 10,
-    borderRadius: 8,
-    alignItems: "center",
-  },
-  closeText: {
-    color: "#fff",
-    fontWeight: "700",
+    color: "#111827",
   },
 });

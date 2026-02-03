@@ -5,9 +5,7 @@
     "version": "1.0.0",
     "scheme": "mandiconnect",
     "orientation": "portrait",
-
     "userInterfaceStyle": "automatic",
-
     "platforms": [
       "ios",
       "android",
@@ -26,6 +24,10 @@
     },
     "android": {
       "package": "com.dhanashrii123.myapp"
-    }
+    },
+    "plugins": [
+      "expo-font",
+      "expo-router"
+    ]
   }
 }

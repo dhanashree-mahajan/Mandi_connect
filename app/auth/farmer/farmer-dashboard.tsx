@@ -37,17 +37,18 @@ type Entry = {
 
 const formatEntry = (e: Entry) => ({
   cropName: e.crop?.name || e.cropName || "",
-
   marketName: e.market?.marketName || e.market?.name || e.marketName || "",
-
   price: e.price ?? e.rate ?? 0,
-
   quantity: e.quantity || e.crop?.displayUnit || "",
-
   status: e.status || "",
-
   time: e.createdAt ? new Date(e.createdAt).toLocaleString() : "",
 });
+
+type ReactionState = {
+  type: "like" | "dislike" | null;
+  likes: number;
+  dislikes: number;
+};
 
 export default function FarmerDashboard() {
   const router = useRouter();
@@ -65,6 +66,45 @@ export default function FarmerDashboard() {
 
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+
+  const [reactions, setReactions] = useState<Record<string, ReactionState>>({});
+
+  const handleReaction = (id: string, type: "like" | "dislike") => {
+    setReactions((prev) => {
+      const current = prev[id] || { type: null, likes: 0, dislikes: 0 };
+
+      if (current.type === type) {
+        return {
+          ...prev,
+          [id]: {
+            type: null,
+            likes: type === "like" ? current.likes - 1 : current.likes,
+            dislikes:
+              type === "dislike" ? current.dislikes - 1 : current.dislikes,
+          },
+        };
+      }
+
+      return {
+        ...prev,
+        [id]: {
+          type,
+          likes:
+            type === "like"
+              ? current.likes + 1
+              : current.type === "like"
+                ? current.likes - 1
+                : current.likes,
+          dislikes:
+            type === "dislike"
+              ? current.dislikes + 1
+              : current.type === "dislike"
+                ? current.dislikes - 1
+                : current.dislikes,
+        },
+      };
+    });
+  };
 
   const getHeaders = async () => ({
     Authorization: `Bearer ${await AsyncStorage.getItem("token")}`,
@@ -189,9 +229,12 @@ export default function FarmerDashboard() {
           ) : (
             data.map((entry, idx) => {
               const f = formatEntry(entry);
+              const key = entry._id ?? `${idx}`;
+              const reaction = reactions[key];
+
               return (
                 <View
-                  key={entry._id || idx}
+                  key={key}
                   style={[styles.card, width < 360 && styles.cardCompact]}
                 >
                   <Text style={styles.price}>₹{f.price}</Text>
@@ -199,12 +242,64 @@ export default function FarmerDashboard() {
                   <Text style={styles.marketName}>{f.marketName}</Text>
                   <Text style={styles.variety}>{f.quantity}</Text>
 
-                  <TouchableOpacity
-                    style={styles.viewButton}
-                    onPress={() => setViewEntry(entry)}
-                  >
-                    <Text>View</Text>
-                  </TouchableOpacity>
+                  <View style={styles.cardFooter}>
+                    {activeTab === "community" && (
+                      <View style={styles.reactionRow}>
+                        {/* LIKE */}
+                        <TouchableOpacity
+                          disabled={reaction?.type === "dislike"}
+                          onPress={() => handleReaction(key, "like")}
+                          style={styles.reactionItem}
+                        >
+                          <Text style={styles.countText}>
+                            {reaction?.likes ?? 0}
+                          </Text>
+                          <MaterialCommunityIcons
+                            name={
+                              reaction?.type === "like"
+                                ? "thumb-up"
+                                : "thumb-up-outline"
+                            }
+                            size={20}
+                            color={
+                              reaction?.type === "like" ? "#2E7D32" : "#6B7280"
+                            }
+                          />
+                        </TouchableOpacity>
+
+                        {/* DISLIKE */}
+                        <TouchableOpacity
+                          disabled={reaction?.type === "like"}
+                          onPress={() => handleReaction(key, "dislike")}
+                          style={styles.reactionItem}
+                        >
+                          <Text style={styles.countText}>
+                            {reaction?.dislikes ?? 0}
+                          </Text>
+                          <MaterialCommunityIcons
+                            name={
+                              reaction?.type === "dislike"
+                                ? "thumb-down"
+                                : "thumb-down-outline"
+                            }
+                            size={20}
+                            color={
+                              reaction?.type === "dislike"
+                                ? "#C62828"
+                                : "#6B7280"
+                            }
+                          />
+                        </TouchableOpacity>
+                      </View>
+                    )}
+
+                    <TouchableOpacity
+                      style={styles.viewButton}
+                      onPress={() => setViewEntry(entry)}
+                    >
+                      <Text>View</Text>
+                    </TouchableOpacity>
+                  </View>
                 </View>
               );
             })
@@ -216,7 +311,6 @@ export default function FarmerDashboard() {
           <View style={styles.modalBackground}>
             <View style={styles.modalCard}>
               <Text style={styles.modalTitle}>{selectedEntry?.cropName}</Text>
-
               <Text>Market: {selectedEntry?.marketName}</Text>
               <Text>Price: ₹{selectedEntry?.price}</Text>
               <Text>Quantity: {selectedEntry?.quantity}</Text>
@@ -249,16 +343,19 @@ const styles = StyleSheet.create({
     borderColor: "#E5E7EB",
     paddingBottom: 8,
   },
+
   backButton: {
     padding: 8,
     backgroundColor: "#E8F5E9",
     borderRadius: 8,
   },
+
   headerCenter: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
   },
+
   headerTitle: {
     fontSize: 22,
     fontWeight: "700",
@@ -271,6 +368,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     gap: 8,
   },
+
   toggleButton: {
     flex: 1,
     padding: 10,
@@ -279,6 +377,7 @@ const styles = StyleSheet.create({
     borderColor: "#D1D5DB",
     alignItems: "center",
   },
+
   toggleActive: { backgroundColor: "#2E7D32" },
   toggleText: { color: "#374151" },
   toggleTextActive: { color: "#fff" },
@@ -298,6 +397,7 @@ const styles = StyleSheet.create({
     marginHorizontal: 12,
     marginTop: 12,
   },
+
   cardCompact: { padding: 10 },
 
   price: {
@@ -305,31 +405,44 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: "#2E7D32",
   },
+
   cropName: { fontSize: 15, fontWeight: "600" },
+
   marketName: {
     fontSize: 13,
     color: "#374151",
     marginTop: 2,
   },
+
   variety: { color: "#6B7280" },
 
   viewButton: {
-    alignSelf: "flex-end",
-    marginTop: 8,
     padding: 6,
     borderWidth: 1,
     borderRadius: 6,
   },
 
-  fab: {
-    position: "absolute",
-    right: 24,
-    backgroundColor: "#2E7D32",
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    justifyContent: "center",
+  cardFooter: {
+    flexDirection: "row",
+    justifyContent: "space-between",
     alignItems: "center",
+    marginTop: 10,
+  },
+
+  reactionRow: {
+    flexDirection: "row",
+    gap: 16,
+  },
+  reactionItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+
+  countText: {
+    fontSize: 12,
+    color: "#374151",
+    marginTop: 2,
   },
 
   modalBackground: {
@@ -338,17 +451,20 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
+
   modalCard: {
     backgroundColor: "#fff",
     padding: 20,
     borderRadius: 12,
     width: "90%",
   },
+
   modalTitle: {
     fontSize: 18,
     fontWeight: "700",
     marginBottom: 8,
   },
+
   submitButton: {
     backgroundColor: "#2E7D32",
     padding: 12,
@@ -356,5 +472,6 @@ const styles = StyleSheet.create({
     marginTop: 12,
     alignItems: "center",
   },
+
   submitText: { color: "#fff", fontWeight: "700" },
 });

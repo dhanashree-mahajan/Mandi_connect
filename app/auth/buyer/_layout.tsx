@@ -43,6 +43,9 @@ export default function BuyerLayout() {
       <Tabs
         screenOptions={{
           headerShown: false,
+
+          tabBarHideOnKeyboard: true, // ✅ FIXED HERE
+
           tabBarActiveTintColor: "#2E7D32",
           tabBarInactiveTintColor: "#9CA3AF",
           tabBarStyle: {
@@ -57,7 +60,6 @@ export default function BuyerLayout() {
         }}
       >
         <Tabs.Screen
-          key="buyerdashboard"
           name="buyerdashboard"
           options={{
             title: "Home",
@@ -72,7 +74,6 @@ export default function BuyerLayout() {
         />
 
         <Tabs.Screen
-          key="marketplace"
           name="marketplace"
           options={{
             title: "Marketplace",
@@ -87,7 +88,6 @@ export default function BuyerLayout() {
         />
 
         <Tabs.Screen
-          key="notifications"
           name="notifications"
           options={{
             title: "Notifications",
@@ -102,7 +102,6 @@ export default function BuyerLayout() {
         />
 
         <Tabs.Screen
-          key="profile"
           name="profile"
           options={{
             title: "Profile",
@@ -117,11 +116,7 @@ export default function BuyerLayout() {
         />
 
         {/* hidden route */}
-        <Tabs.Screen
-          key="addDemand"
-          name="addDemand"
-          options={{ href: null }}
-        />
+        <Tabs.Screen name="addDemand" options={{ href: null }} />
       </Tabs>
     </SafeAreaView>
   );

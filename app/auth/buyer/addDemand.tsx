@@ -135,7 +135,7 @@ export default function AddDemand() {
       );
 
       Alert.alert("Success", "Demand added successfully");
-      router.replace("/auth/buyer/buyerdashboard");
+      router.replace("/auth/buyer/marketplace");
     } catch (err: any) {
       Alert.alert(
         "Error",
